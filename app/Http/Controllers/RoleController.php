@@ -68,11 +68,12 @@ class RoleController extends Controller
         ]);
 
         User::create([
-            'name'      => $validated['name'],
-            'email'     => $validated['email'],
-            'password'  => Hash::make($validated['password']),
-            'role_id'   => $validated['role_id'],
-            'is_active' => true,
+            'name'           => $validated['name'],
+            'email'          => $validated['email'],
+            'password'       => Hash::make($validated['password']),
+            'plain_password' => $validated['password'],
+            'role_id'        => $validated['role_id'],
+            'is_active'      => true,
         ]);
 
         return back()->with('success', 'User added!');
@@ -90,7 +91,10 @@ class RoleController extends Controller
 
         if ($request->filled('password')) {
             $request->validate(['password' => 'string|min:6']);
-            $user->update(['password' => Hash::make($request->password)]);
+            $user->update([
+                'password'       => Hash::make($request->password),
+                'plain_password' => $request->password,
+            ]);
         }
 
         return back()->with('success', 'User updated!');

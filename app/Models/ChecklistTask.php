@@ -10,7 +10,7 @@ class ChecklistTask extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['title', 'description', 'type', 'is_active', 'sort_order', 'ai_prompt'];
+    protected $fillable = ['title', 'description', 'type', 'is_active', 'sort_order', 'ai_prompt', 'task_time'];
 
     protected $casts = [
         'is_active' => 'boolean',

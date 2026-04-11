@@ -35,6 +35,10 @@
       </div>
     @endif
 
+    @php
+      $roles = \App\Models\Role::with('users')->orderBy('name')->get();
+    @endphp
+
     {{-- ====== ADD TASK FORM ====== --}}
     <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-4 space-y-3">
       <h2 class="font-semibold text-gray-800 text-sm">Add New Task</h2>
@@ -51,8 +55,16 @@
             <option value="both">📸📝 Photo + Note (both required)</option>
           </select>
         </div>
-        <input type="text" name="description" placeholder="Description (optional)..."
-               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input type="text" name="description" placeholder="Description (optional)..."
+                 class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-gray-500 whitespace-nowrap">Scheduled Time:</label>
+            <input type="time" name="task_time"
+                   class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 flex-1">
+          </div>
+        </div>
 
         <div>
           <label class="text-xs text-gray-500 mb-1 block">AI Prompt Focus <span class="text-gray-400">(optional — guides what the AI checks for)</span>:</label>
@@ -60,14 +72,52 @@
                     class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400 resize-none"></textarea>
         </div>
 
-        <div>
+        {{-- Assign to - Dropdown grouped by role --}}
+        <div x-data="{ open: false }" class="relative">
           <label class="text-xs text-gray-500 mb-1.5 block">Assign to (leave blank = anyone can submit):</label>
-          <div class="flex flex-wrap gap-2">
-            @foreach($allUsers as $u)
-              <label class="flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50">
-                <input type="checkbox" name="assigned_users[]" value="{{ $u->id }}" class="accent-blue-600">
-                {{ $u->name }}
-              </label>
+          <button type="button" @click="open = !open"
+                  class="w-full sm:w-auto min-w-[280px] border border-gray-300 rounded-lg px-3 py-2 text-sm text-left bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-400 flex items-center justify-between gap-2">
+            <span class="text-gray-500" x-text="
+              (() => {
+                const checked = [...document.querySelectorAll('input[name=\'assigned_users[]\']:checked')];
+                if (checked.length === 0) return 'Select users...';
+                return checked.length + ' user(s) selected';
+              })()
+            ">Select users...</span>
+            <svg class="w-4 h-4 text-gray-400 transition-transform" :class="open && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          </button>
+
+          <div x-show="open" @click.away="open = false" x-transition
+               class="absolute z-20 mt-1 w-full sm:w-[320px] bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto p-2 space-y-1">
+            @foreach($roles as $role)
+              @if($role->users->count() > 0)
+                <div class="space-y-0.5">
+                  {{-- Role header with select-all checkbox --}}
+                  <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-gray-50 cursor-pointer hover:bg-gray-100 font-medium text-xs text-gray-700"
+                         x-data
+                         @click.prevent="
+                           const cbs = $el.closest('.space-y-0\\.5').querySelectorAll('input.user-cb');
+                           const allChecked = [...cbs].every(c => c.checked);
+                           cbs.forEach(c => c.checked = !allChecked);
+                         ">
+                    <input type="checkbox" class="accent-blue-600 pointer-events-none role-cb"
+                           @click.stop="
+                             const cbs = $el.closest('.space-y-0\\.5').querySelectorAll('input.user-cb');
+                             cbs.forEach(c => c.checked = $el.checked);
+                           ">
+                    {{ $role->name }}
+                    <span class="text-gray-400 font-normal">({{ $role->users->count() }})</span>
+                  </label>
+                  {{-- Individual users --}}
+                  @foreach($role->users as $u)
+                    <label class="flex items-center gap-2 px-2 py-1 pl-7 rounded-lg cursor-pointer hover:bg-gray-50 text-xs text-gray-600">
+                      <input type="checkbox" name="assigned_users[]" value="{{ $u->id }}" class="accent-blue-600 user-cb">
+                      {{ $u->name }}
+                      <span class="text-gray-300 text-xs">{{ $u->email }}</span>
+                    </label>
+                  @endforeach
+                </div>
+              @endif
             @endforeach
           </div>
         </div>
@@ -108,6 +158,11 @@
                   {{ $t->type === 'photo' ? '📸' : ($t->type === 'note' ? '📝' : '📎') }}
                   {{ ucfirst($t->type) }}
                 </span>
+                @if($t->task_time)
+                  <span class="text-xs px-1.5 py-0.5 rounded-full bg-green-50 text-green-600">
+                    🕐 {{ \Carbon\Carbon::parse($t->task_time)->format('g:i A') }}
+                  </span>
+                @endif
                 @if(!$t->is_active)
                   <span class="text-xs text-gray-400 italic">(inactive)</span>
                 @endif
@@ -133,6 +188,7 @@
                 <input type="hidden" name="description" value="{{ $t->description }}">
                 <input type="hidden" name="type"        value="{{ $t->type }}">
                 <input type="hidden" name="ai_prompt"   value="{{ $t->ai_prompt }}">
+                <input type="hidden" name="task_time"   value="{{ $t->task_time }}">
                 <input type="hidden" name="is_active"   value="{{ $t->is_active ? '0' : '1' }}">
                 @foreach($assignedIds as $uid)
                   <input type="hidden" name="assigned_users[]" value="{{ $uid }}">
@@ -167,28 +223,75 @@
                 <option value="both"  {{ $t->type === 'both'  ? 'selected' : '' }}>📸📝 Photo + Note</option>
               </select>
             </div>
-            <input type="text" name="description" value="{{ $t->description }}"
-                   placeholder="Description (optional)..."
-                   class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input type="text" name="description" value="{{ $t->description }}"
+                     placeholder="Description (optional)..."
+                     class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+              <div class="flex items-center gap-2">
+                <label class="text-xs text-gray-500 whitespace-nowrap">Time:</label>
+                <input type="time" name="task_time" value="{{ $t->task_time ? \Carbon\Carbon::parse($t->task_time)->format('H:i') : '' }}"
+                       class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 flex-1">
+              </div>
+            </div>
+
             <div>
               <label class="text-xs text-gray-500 mb-1 block">AI Prompt Focus <span class="text-gray-400">(optional)</span>:</label>
               <textarea name="ai_prompt" rows="2" placeholder="e.g. Check if the workstation is clean and items are organized properly..."
                         class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400 resize-none">{{ $t->ai_prompt }}</textarea>
             </div>
             <input type="hidden" name="is_active" value="{{ $t->is_active ? '1' : '0' }}">
-            <div>
+
+            {{-- Assign to - Dropdown grouped by role (Edit mode) --}}
+            <div x-data="{ editOpen: false }" class="relative">
               <label class="text-xs text-gray-500 mb-1.5 block">Assigned to (blank = anyone):</label>
-              <div class="flex flex-wrap gap-2">
-                @foreach($allUsers as $u)
-                  <label class="flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 bg-white">
-                    <input type="checkbox" name="assigned_users[]" value="{{ $u->id }}"
-                           {{ in_array($u->id, $assignedIds) ? 'checked' : '' }}
-                           class="accent-blue-600">
-                    {{ $u->name }}
-                  </label>
+              <button type="button" @click="editOpen = !editOpen"
+                      class="w-full sm:w-auto min-w-[280px] border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-left bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-400 flex items-center justify-between gap-2">
+                <span class="text-gray-500">
+                  @if(count($assignedIds) > 0)
+                    {{ count($assignedIds) }} user(s) selected
+                  @else
+                    Select users...
+                  @endif
+                </span>
+                <svg class="w-4 h-4 text-gray-400 transition-transform" :class="editOpen && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+
+              <div x-show="editOpen" @click.away="editOpen = false" x-transition
+                   class="absolute z-20 mt-1 w-full sm:w-[320px] bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto p-2 space-y-1">
+                @foreach($roles as $role)
+                  @if($role->users->count() > 0)
+                    <div class="space-y-0.5">
+                      <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-gray-50 cursor-pointer hover:bg-gray-100 font-medium text-xs text-gray-700"
+                             x-data
+                             @click.prevent="
+                               const cbs = $el.closest('.space-y-0\\.5').querySelectorAll('input.user-cb-edit-{{ $t->id }}');
+                               const allChecked = [...cbs].every(c => c.checked);
+                               cbs.forEach(c => c.checked = !allChecked);
+                             ">
+                        <input type="checkbox" class="accent-blue-600 pointer-events-none"
+                               @click.stop="
+                                 const cbs = $el.closest('.space-y-0\\.5').querySelectorAll('input.user-cb-edit-{{ $t->id }}');
+                                 cbs.forEach(c => c.checked = $el.checked);
+                               ">
+                        {{ $role->name }}
+                        <span class="text-gray-400 font-normal">({{ $role->users->count() }})</span>
+                      </label>
+                      @foreach($role->users as $u)
+                        <label class="flex items-center gap-2 px-2 py-1 pl-7 rounded-lg cursor-pointer hover:bg-gray-50 text-xs text-gray-600">
+                          <input type="checkbox" name="assigned_users[]" value="{{ $u->id }}"
+                                 {{ in_array($u->id, $assignedIds) ? 'checked' : '' }}
+                                 class="accent-blue-600 user-cb-edit-{{ $t->id }}">
+                          {{ $u->name }}
+                          <span class="text-gray-300 text-xs">{{ $u->email }}</span>
+                        </label>
+                      @endforeach
+                    </div>
+                  @endif
                 @endforeach
               </div>
             </div>
+
             <div class="flex gap-2 pt-1">
               <button type="submit" class="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 font-medium">Save Changes</button>
               <button type="button" @click="editing = false" class="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded-lg hover:bg-gray-200">Cancel</button>

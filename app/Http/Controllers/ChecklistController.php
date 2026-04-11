@@ -233,6 +233,7 @@ class ChecklistController extends Controller
             'description' => 'nullable|string|max:1000',
             'type'        => 'required|in:photo,note,any,both',
             'ai_prompt'   => 'nullable|string|max:2000',
+            'task_time'   => 'nullable|date_format:H:i',
         ]);
 
         $task = ChecklistTask::create([
@@ -255,6 +256,7 @@ class ChecklistController extends Controller
             'type'        => 'required|in:photo,note,any,both',
             'is_active'   => 'boolean',
             'ai_prompt'   => 'nullable|string|max:2000',
+            'task_time'   => 'nullable|date_format:H:i',
         ]);
 
         $task->update($validated);
