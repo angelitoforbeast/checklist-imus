@@ -130,8 +130,10 @@
                       try {
                         const dt = new DataTransfer();
                         this.queue.forEach(q => dt.items.add(q.file));
-                        this.$refs.fileInput.files = dt.files;
-                      } catch(e) {}
+                        if (this.$refs.fileInput) this.$refs.fileInput.files = dt.files;
+                      } catch(e) {
+                        console.log('DataTransfer not supported, using fallback');
+                      }
                     },
                     handlePaste(e) {
                       if (!this.showForm) return;
@@ -140,6 +142,19 @@
                         e.preventDefault();
                         this.addFiles(imgs.map(i => i.getAsFile()));
                       }
+                    },
+                    submitForm(e) {
+                      if (this.queue.length === 0) return true;
+                      e.preventDefault();
+                      const form = e.target;
+                      const fd = new FormData(form);
+                      fd.delete('files[]');
+                      this.queue.forEach(q => fd.append('files[]', q.file, q.name));
+                      fetch(form.action, {
+                        method: 'POST',
+                        body: fd,
+                        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' }
+                      }).then(r => { window.location.reload(); }).catch(err => { form.submit(); });
                     }
                   }"
                   @paste.window="handlePaste($event)"
@@ -306,7 +321,7 @@
                   @if($canSubmit || $done)
                     <tr x-show="showForm" x-transition class="border-b border-blue-100 bg-blue-50/20">
                       <td colspan="7" class="px-6 py-4">
-                        <form method="POST" action="{{ route('checklist.submit', $task) }}" enctype="multipart/form-data">
+                        <form method="POST" action="{{ route('checklist.submit', $task) }}" enctype="multipart/form-data" @submit="submitForm($event)">
                           @csrf
                           <div class="flex gap-4 items-start flex-wrap">
 
@@ -351,7 +366,7 @@
                                        multiple
                                        accept="{{ in_array($task->type, ['photo','both','photo_note']) ? 'image/*' : 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv' }}"
                                        capture="environment"
-                                       @change="addFiles($event.target.files); $event.target.value='';">
+                                       @change="addFiles($event.target.files)">
 
                                 <template x-if="queue.length > 0">
                                   <div class="flex flex-wrap gap-2 mt-2">
@@ -446,8 +461,23 @@
                      try {
                        const dt = new DataTransfer();
                        this.queue.forEach(q => dt.items.add(q.file));
-                       this.$refs.mobileFileInput.files = dt.files;
-                     } catch(e) {}
+                       if (this.$refs.mobileFileInput) this.$refs.mobileFileInput.files = dt.files;
+                     } catch(e) {
+                       console.log('DataTransfer not supported, using fallback');
+                     }
+                   },
+                   submitForm(e) {
+                     if (this.queue.length === 0) return true;
+                     e.preventDefault();
+                     const form = e.target;
+                     const fd = new FormData(form);
+                     fd.delete('files[]');
+                     this.queue.forEach(q => fd.append('files[]', q.file, q.name));
+                     fetch(form.action, {
+                       method: 'POST',
+                       body: fd,
+                       headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' }
+                     }).then(r => { window.location.reload(); }).catch(err => { form.submit(); });
                    }
                  }">
 
@@ -523,7 +553,7 @@
               {{-- Mobile Form --}}
               @if($canSubmit || $done)
                 <div x-show="showForm" x-transition class="border-t border-blue-100 bg-blue-50/30 px-4 py-4">
-                  <form method="POST" action="{{ route('checklist.submit', $task) }}" enctype="multipart/form-data" class="space-y-3">
+                  <form method="POST" action="{{ route('checklist.submit', $task) }}" enctype="multipart/form-data" class="space-y-3" @submit="submitForm($event)">
                     @csrf
 
                     @if(in_array($task->type, ['note', 'any', 'both', 'photo_note']))
@@ -558,7 +588,7 @@
                                multiple
                                accept="{{ in_array($task->type, ['photo','both','photo_note']) ? 'image/*' : 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv' }}"
                                capture="environment"
-                               @change="addFiles($event.target.files); $event.target.value='';">
+                               @change="addFiles($event.target.files)">
 
                         <template x-if="queue.length > 0">
                           <div class="flex flex-wrap gap-2">
