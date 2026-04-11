@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('title');
             $table->string('description')->nullable();
-            $table->enum('type', ['photo', 'note', 'any', 'both'])->default('any');
+            $table->enum('type', ['photo', 'note', 'any', 'both', 'photo_note'])->default('photo_note');
             $table->boolean('is_active')->default(true);
             $table->integer('sort_order')->default(0);
             $table->text('ai_prompt')->nullable();
