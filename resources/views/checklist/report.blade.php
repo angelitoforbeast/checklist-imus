@@ -219,9 +219,9 @@
                         <p class="text-xs text-indigo-400 mt-0.5">→ {{ $task->assignedUsers->pluck('name')->implode(', ') }}</p>
                       @endif
                       <span class="text-xs px-1.5 py-0.5 rounded-full mt-1 inline-block
-                        {{ $task->type === 'photo' ? 'bg-blue-50 text-blue-500' : ($task->type === 'note' ? 'bg-amber-50 text-amber-500' : ($task->type === 'both' ? 'bg-purple-50 text-purple-500' : 'bg-gray-100 text-gray-400')) }}">
-                        {{ $task->type === 'photo' ? '📸' : ($task->type === 'note' ? '📝' : ($task->type === 'both' ? '📸📝' : '📎')) }}
-                        {{ $task->type === 'both' ? 'Photo + Note' : ucfirst($task->type) }}
+                        {{ in_array($task->type, ['photo','photo_note']) ? 'bg-blue-50 text-blue-500' : ($task->type === 'note' ? 'bg-amber-50 text-amber-500' : ($task->type === 'both' ? 'bg-purple-50 text-purple-500' : 'bg-gray-100 text-gray-400')) }}">
+                        {{ in_array($task->type, ['photo','photo_note']) ? '📸' : ($task->type === 'note' ? '📝' : ($task->type === 'both' ? '📸📝' : '📎')) }}
+                        {{ $task->type === 'photo_note' ? 'Photo + Note opt.' : ($task->type === 'both' ? 'Photo + Note' : ucfirst($task->type)) }}
                       </span>
                     </td>
 

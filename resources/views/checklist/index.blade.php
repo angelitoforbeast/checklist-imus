@@ -163,9 +163,9 @@
                         <p class="text-xs text-indigo-400 mt-0.5">→ {{ $task->assignedUsers->pluck('name')->implode(', ') }}</p>
                       @endif
                       <span class="text-xs px-1.5 py-0.5 rounded-full mt-1 inline-block
-                        {{ $task->type === 'photo' ? 'bg-blue-50 text-blue-500' : ($task->type === 'note' ? 'bg-amber-50 text-amber-500' : ($task->type === 'both' ? 'bg-purple-50 text-purple-500' : 'bg-gray-100 text-gray-400')) }}">
-                        {{ $task->type === 'photo' ? '📸' : ($task->type === 'note' ? '📝' : ($task->type === 'both' ? '📸📝' : '📎')) }}
-                        {{ $task->type === 'both' ? 'Photo + Note' : ucfirst($task->type) }}
+                        {{ in_array($task->type, ['photo','photo_note']) ? 'bg-blue-50 text-blue-500' : ($task->type === 'note' ? 'bg-amber-50 text-amber-500' : ($task->type === 'both' ? 'bg-purple-50 text-purple-500' : 'bg-gray-100 text-gray-400')) }}">
+                        {{ in_array($task->type, ['photo','photo_note']) ? '📸' : ($task->type === 'note' ? '📝' : ($task->type === 'both' ? '📸📝' : '📎')) }}
+                        {{ $task->type === 'photo_note' ? 'Photo + Note opt.' : ($task->type === 'both' ? 'Photo + Note' : ucfirst($task->type)) }}
                       </span>
                     </td>
 
@@ -311,9 +311,9 @@
                           <div class="flex gap-4 items-start flex-wrap">
 
                             {{-- Notes --}}
-                            @if(in_array($task->type, ['note', 'any', 'both']))
+                            @if(in_array($task->type, ['note', 'any', 'both', 'photo_note']))
                               <div class="flex-1 min-w-[200px]">
-                                <label class="text-xs text-gray-400 mb-1 block font-medium">
+                                <label class="block text-xs font-medium text-gray-500 mb-1">
                                   Notes {!! $task->type === 'both' ? '<span class="text-red-400">*</span>' : '' !!}
                                 </label>
                                 <textarea name="notes" rows="3" placeholder="Add notes or remarks..."
@@ -322,10 +322,10 @@
                             @endif
 
                             {{-- Upload zone --}}
-                            @if(in_array($task->type, ['photo', 'any', 'both']))
+@if(in_array($task->type, ['photo', 'any', 'both', 'photo_note']))
                               <div class="flex-shrink-0 min-w-[240px]">
-                                <label class="text-xs text-gray-400 mb-1 block font-medium">
-                                  @if($task->type === 'both') Photos <span class="text-red-400">*</span>
+                                <label class="block text-xs font-medium text-gray-500 mb-1">
+                                  @if(in_array($task->type, ['both', 'photo_note'])) Photos <span class="text-red-400">*</span>
                                   @elseif($task->type === 'photo') Photos (required)
                                   @else Images / Files (optional)
                                   @endif
@@ -349,7 +349,7 @@
 
                                 <input type="file" x-ref="fileInput" name="files[]" class="hidden"
                                        multiple
-                                       accept="{{ in_array($task->type, ['photo','both']) ? 'image/*' : 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv' }}"
+                                       accept="{{ in_array($task->type, ['photo','both','photo_note']) ? 'image/*' : 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv' }}"
                                        capture="environment"
                                        @change="addFiles($event.target.files); $event.target.value='';">
 
@@ -463,9 +463,9 @@
                       <span class="text-xs text-green-600">🕐 {{ \Carbon\Carbon::parse($task->task_time)->format('g:i A') }}</span>
                     @endif
                     <span class="text-xs px-1.5 py-0.5 rounded-full
-                      {{ $task->type === 'photo' ? 'bg-blue-50 text-blue-500' : ($task->type === 'note' ? 'bg-amber-50 text-amber-500' : ($task->type === 'both' ? 'bg-purple-50 text-purple-500' : 'bg-gray-100 text-gray-400')) }}">
-                      {{ $task->type === 'photo' ? '📸' : ($task->type === 'note' ? '📝' : ($task->type === 'both' ? '📸📝' : '📎')) }}
-                      {{ $task->type === 'both' ? 'Photo + Note' : ucfirst($task->type) }}
+                      {{ in_array($task->type, ['photo','photo_note']) ? 'bg-blue-50 text-blue-500' : ($task->type === 'note' ? 'bg-amber-50 text-amber-500' : ($task->type === 'both' ? 'bg-purple-50 text-purple-500' : 'bg-gray-100 text-gray-400')) }}">
+                      {{ in_array($task->type, ['photo','photo_note']) ? '📸' : ($task->type === 'note' ? '📝' : ($task->type === 'both' ? '📸📝' : '📎')) }}
+                      {{ $task->type === 'photo_note' ? 'Photo + Note opt.' : ($task->type === 'both' ? 'Photo + Note' : ucfirst($task->type)) }}
                     </span>
                     @if($done)
                       <span class="text-xs text-green-500 font-medium">✓ Done</span>
@@ -526,9 +526,9 @@
                   <form method="POST" action="{{ route('checklist.submit', $task) }}" enctype="multipart/form-data" class="space-y-3">
                     @csrf
 
-                    @if(in_array($task->type, ['note', 'any', 'both']))
+                    @if(in_array($task->type, ['note', 'any', 'both', 'photo_note']))
                       <div>
-                        <label class="text-xs text-gray-400 mb-1 block font-medium">
+                        <label class="block text-xs font-medium text-gray-500 mb-1">
                           Notes {!! $task->type === 'both' ? '<span class="text-red-400">*</span>' : '' !!}
                         </label>
                         <textarea name="notes" rows="3" placeholder="Add notes or remarks..."
@@ -536,10 +536,10 @@
                       </div>
                     @endif
 
-                    @if(in_array($task->type, ['photo', 'any', 'both']))
+@if(in_array($task->type, ['photo', 'any', 'both', 'photo_note']))
                       <div>
-                        <label class="text-xs text-gray-400 mb-1 block font-medium">
-                          @if($task->type === 'both') Photos <span class="text-red-400">*</span>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">
+                          @if(in_array($task->type, ['both', 'photo_note'])) Photos <span class="text-red-400">*</span>
                           @elseif($task->type === 'photo') Photos (required)
                           @else Images / Files (optional)
                           @endif
@@ -556,7 +556,7 @@
 
                         <input type="file" x-ref="mobileFileInput" name="files[]" class="hidden"
                                multiple
-                               accept="{{ in_array($task->type, ['photo','both']) ? 'image/*' : 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv' }}"
+                               accept="{{ in_array($task->type, ['photo','both','photo_note']) ? 'image/*' : 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv' }}"
                                capture="environment"
                                @change="addFiles($event.target.files); $event.target.value='';">
 

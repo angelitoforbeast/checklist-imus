@@ -49,8 +49,9 @@
           <input type="text" name="title" placeholder="Task title..." required
                  class="sm:col-span-2 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
           <select name="type" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+            <option value="photo_note">📸 Photo required, note optional</option>
             <option value="any">📎 Any (photo or note)</option>
-            <option value="photo">📸 Photo required</option>
+            <option value="photo">📸 Photo only</option>
             <option value="note">📝 Note only</option>
             <option value="both">📸📝 Photo + Note (both required)</option>
           </select>
@@ -217,6 +218,7 @@
               <input type="text" name="title" value="{{ $t->title }}" required
                      class="sm:col-span-2 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
               <select name="type" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+                <option value="photo_note" {{ $t->type === 'photo_note' ? 'selected' : '' }}>📸 Photo + Note optional</option>
                 <option value="any"   {{ $t->type === 'any'   ? 'selected' : '' }}>📎 Any</option>
                 <option value="photo" {{ $t->type === 'photo' ? 'selected' : '' }}>📸 Photo</option>
                 <option value="note"  {{ $t->type === 'note'  ? 'selected' : '' }}>📝 Note</option>

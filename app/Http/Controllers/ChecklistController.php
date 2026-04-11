@@ -154,6 +154,11 @@ class ChecklistController extends Controller
         if ($task->type === 'photo') {
             $rules['files']   = $hasExistingFiles ? 'nullable|array|max:10' : 'required|array|min:1|max:10';
             $rules['files.*'] = "file|max:10240|mimes:{$imageMimes}";
+        } elseif ($task->type === 'photo_note') {
+            // Photo required, note optional
+            $rules['files']   = $hasExistingFiles ? 'nullable|array|max:10' : 'required|array|min:1|max:10';
+            $rules['files.*'] = "file|max:10240|mimes:{$imageMimes}";
+            $rules['notes']   = 'nullable|string|max:2000';
         } elseif ($task->type === 'both') {
             $rules['notes']   = 'required|string|max:2000';
             $rules['files']   = $hasExistingFiles ? 'nullable|array|max:10' : 'required|array|min:1|max:10';
@@ -231,7 +236,7 @@ class ChecklistController extends Controller
         $validated = $request->validate([
             'title'       => 'required|string|max:255',
             'description' => 'nullable|string|max:1000',
-            'type'        => 'required|in:photo,note,any,both',
+            'type'        => 'required|in:photo,note,any,both,photo_note',
             'ai_prompt'   => 'nullable|string|max:2000',
             'task_time'   => 'nullable|date_format:H:i',
         ]);
@@ -253,7 +258,7 @@ class ChecklistController extends Controller
         $validated = $request->validate([
             'title'       => 'required|string|max:255',
             'description' => 'nullable|string|max:1000',
-            'type'        => 'required|in:photo,note,any,both',
+            'type'        => 'required|in:photo,note,any,both,photo_note',
             'is_active'   => 'boolean',
             'ai_prompt'   => 'nullable|string|max:2000',
             'task_time'   => 'nullable|date_format:H:i',
