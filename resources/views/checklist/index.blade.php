@@ -19,8 +19,10 @@
             </div>
             <span class="text-xs font-semibold text-gray-500">{{ $doneCount }}/{{ $totalTasks }}</span>
           </div>
-          <a href="{{ route('checklist.report') }}" class="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition">📋 Report</a>
-          <a href="{{ route('checklist.manage') }}" class="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition">⚙ Manage</a>
+          @if(Auth::user()->isAdmin())
+            <a href="{{ route('checklist.report') }}" class="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition">📋 Report</a>
+            <a href="{{ route('checklist.manage') }}" class="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition">⚙ Manage</a>
+          @endif
         </div>
       </div>
     </div>
@@ -42,7 +44,7 @@
         </div>
       @endif
 
-      @php $isAdmin = Auth::user()?->role === 'admin'; @endphp
+      @php $isAdmin = Auth::user()?->isAdmin(); @endphp
 
       @if($tasks->isEmpty())
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-14 text-center">

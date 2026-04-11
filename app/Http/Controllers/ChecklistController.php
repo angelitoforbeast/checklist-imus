@@ -19,16 +19,29 @@ class ChecklistController extends Controller
     public function index()
     {
         $today = now()->toDateString();
+        $user  = Auth::user();
 
-        $tasks = ChecklistTask::with('assignedUsers')
+        $tasksQuery = ChecklistTask::with('assignedUsers')
             ->where('is_active', true)
             ->orderBy('sort_order')
-            ->orderBy('id')
-            ->get();
+            ->orderBy('id');
+
+        $allTasks = $tasksQuery->get();
+
+        // Non-admin users only see tasks assigned to them (or tasks with no assignment = everyone)
+        if (!$user->isAdmin()) {
+            $tasks = $allTasks->filter(function ($task) use ($user) {
+                $assignedIds = $task->assignedUsers->pluck('id')->toArray();
+                return empty($assignedIds) || in_array($user->id, $assignedIds);
+            })->values();
+        } else {
+            $tasks = $allTasks;
+        }
 
         // One submission per task per day — keyed by task_id
         $submissionsByTask = ChecklistSubmission::with(['user', 'files', 'logs.user'])
             ->where('date', $today)
+            ->whereIn('checklist_task_id', $tasks->pluck('id'))
             ->get()
             ->keyBy('checklist_task_id');
 
@@ -184,7 +197,7 @@ class ChecklistController extends Controller
 
     public function deleteSubmission(ChecklistSubmission $submission)
     {
-        if ($submission->user_id !== Auth::id() && Auth::user()?->role !== 'admin') {
+        if ($submission->user_id !== Auth::id() && !Auth::user()?->isAdmin()) {
             abort(403);
         }
 
@@ -203,7 +216,7 @@ class ChecklistController extends Controller
     {
         $submission = $file->submission;
 
-        if ($submission->user_id !== Auth::id() && Auth::user()?->role !== 'admin') {
+        if ($submission->user_id !== Auth::id() && !Auth::user()?->isAdmin()) {
             abort(403);
         }
 

@@ -40,14 +40,18 @@
                      class="rounded-md px-3 py-2 text-sm font-medium {{ request()->is('checklist') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }}">
                     <i class="fa-solid fa-clipboard-check mr-1"></i> Checklist
                   </a>
-                  <a href="{{ route('checklist.report') }}"
-                     class="rounded-md px-3 py-2 text-sm font-medium {{ request()->is('checklist/report*') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }}">
-                    <i class="fa-solid fa-chart-bar mr-1"></i> Report
-                  </a>
                   @if(Auth::user()->isAdmin())
+                    <a href="{{ route('checklist.report') }}"
+                       class="rounded-md px-3 py-2 text-sm font-medium {{ request()->is('checklist/report*') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }}">
+                      <i class="fa-solid fa-chart-bar mr-1"></i> Report
+                    </a>
                     <a href="{{ route('checklist.manage') }}"
                        class="rounded-md px-3 py-2 text-sm font-medium {{ request()->is('checklist/manage*') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }}">
-                      <i class="fa-solid fa-gear mr-1"></i> Manage
+                      <i class="fa-solid fa-gear mr-1"></i> Manage Tasks
+                    </a>
+                    <a href="{{ route('admin.roles') }}"
+                       class="rounded-md px-3 py-2 text-sm font-medium {{ request()->is('admin/roles*') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }}">
+                      <i class="fa-solid fa-users-gear mr-1"></i> Roles & Users
                     </a>
                   @endif
                 @endif
@@ -62,7 +66,7 @@
             <div class="flex items-center gap-3">
               <div class="text-gray-300 text-sm text-right leading-tight">
                 <div>{{ Auth::user()->name }}</div>
-                <div class="text-xs text-gray-400">{{ ucfirst(Auth::user()->role) }}</div>
+                <div class="text-xs text-gray-400">{{ Auth::user()->role?->name ?? 'No Role' }}</div>
               </div>
               <div class="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center text-white font-bold text-sm">
                 {{ strtoupper(substr(Auth::user()->name, 0, 1)) }}
@@ -92,12 +96,13 @@
                class="absolute top-16 left-0 right-0 bg-gray-800 border-t border-gray-700 px-4 py-3 space-y-2 z-50">
             @if(Auth::check())
               <a href="{{ route('checklist.index') }}" class="block text-gray-300 hover:text-white text-sm py-1.5">Checklist</a>
-              <a href="{{ route('checklist.report') }}" class="block text-gray-300 hover:text-white text-sm py-1.5">Report</a>
               @if(Auth::user()->isAdmin())
-                <a href="{{ route('checklist.manage') }}" class="block text-gray-300 hover:text-white text-sm py-1.5">Manage</a>
+                <a href="{{ route('checklist.report') }}" class="block text-gray-300 hover:text-white text-sm py-1.5">Report</a>
+                <a href="{{ route('checklist.manage') }}" class="block text-gray-300 hover:text-white text-sm py-1.5">Manage Tasks</a>
+                <a href="{{ route('admin.roles') }}" class="block text-gray-300 hover:text-white text-sm py-1.5">Roles & Users</a>
               @endif
               <div class="border-t border-gray-700 pt-2 mt-2">
-                <p class="text-gray-400 text-xs">{{ Auth::user()->name }} ({{ ucfirst(Auth::user()->role) }})</p>
+                <p class="text-gray-400 text-xs">{{ Auth::user()->name }} ({{ Auth::user()->role?->name ?? 'No Role' }})</p>
                 <form method="POST" action="{{ route('logout') }}" class="mt-1">
                   @csrf
                   <button type="submit" class="text-red-400 hover:text-red-300 text-sm">Logout</button>
@@ -111,8 +116,8 @@
     </div>
   </nav>
 
-  {{-- Page heading (hidden for checklist pages — they have their own header) --}}
-  @unless(request()->is('checklist') || request()->is('checklist/*'))
+  {{-- Page heading (hidden for checklist and admin pages — they have their own header) --}}
+  @unless(request()->is('checklist') || request()->is('checklist/*') || request()->is('admin/*'))
   <header class="bg-white shadow-sm mt-16">
     <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <h1 class="text-3xl font-bold tracking-tight text-gray-900">
@@ -124,7 +129,7 @@
 
   {{-- Page content --}}
   <main>
-    @if (request()->is(['checklist', 'checklist/*']))
+    @if (request()->is(['checklist', 'checklist/*', 'admin/*']))
       <div class="w-full px-0">
         {{ $slot }}
       </div>
