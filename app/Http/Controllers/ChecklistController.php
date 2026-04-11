@@ -170,6 +170,11 @@ class ChecklistController extends Controller
 
         $request->validate($rules);
 
+        // Extra check: for photo-required types, ensure files are actually present
+        if (in_array($task->type, ['photo', 'photo_note', 'both']) && !$hasExistingFiles && !$request->hasFile('files')) {
+            return back()->withErrors(['files' => 'At least one photo is required.'])->withInput();
+        }
+
         $submission = ChecklistSubmission::updateOrCreate(
             ['checklist_task_id' => $task->id, 'date' => $today],
             ['notes' => $request->notes, 'user_id' => $isNew ? Auth::id() : $existing->user_id]
