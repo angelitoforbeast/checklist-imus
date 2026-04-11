@@ -7,6 +7,7 @@ use App\Models\ChecklistSubmission;
 use App\Models\ChecklistSubmissionFile;
 use App\Models\ChecklistSubmissionLog;
 use App\Models\ChecklistAnalysisLog;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
@@ -15,277 +16,341 @@ use Carbon\Carbon;
 
 class ChecklistController extends Controller
 {
-    /**
-     * Main checklist page - staff submits tasks for today
-     */
-    public function index(Request $request)
+    public function index()
     {
-        $date = $request->get('date', Carbon::today()->toDateString());
-        $tasks = ChecklistTask::where('is_active', true)
+        $today = now()->toDateString();
+
+        $tasks = ChecklistTask::with('assignedUsers')
+            ->where('is_active', true)
             ->orderBy('sort_order')
+            ->orderBy('id')
             ->get();
 
-        $submissions = ChecklistSubmission::where('date', $date)
-            ->with(['user', 'files', 'logs.user'])
+        // One submission per task per day — keyed by task_id
+        $submissionsByTask = ChecklistSubmission::with(['user', 'files', 'logs.user'])
+            ->where('date', $today)
             ->get()
             ->keyBy('checklist_task_id');
 
-        return view('checklist.index', compact('tasks', 'submissions', 'date'));
+        $doneCount  = $submissionsByTask->count();
+        $totalTasks = $tasks->count();
+
+        return view('checklist.index', compact(
+            'tasks', 'submissionsByTask',
+            'today', 'doneCount', 'totalTasks'
+        ));
     }
 
-    /**
-     * Submit a task (create or update submission)
-     */
-    public function submit(Request $request, ChecklistTask $task)
+    public function report(Request $request)
     {
-        $request->validate([
-            'notes' => 'nullable|string|max:5000',
-            'files.*' => 'nullable|file|max:10240',
-        ]);
+        $date = $request->query('date', now()->toDateString());
 
-        $date = $request->get('date', Carbon::today()->toDateString());
-        $user = Auth::user();
+        try {
+            $dateObj = \Carbon\Carbon::parse($date);
+        } catch (\Exception $e) {
+            $dateObj = now();
+        }
 
-        $submission = ChecklistSubmission::firstOrNew([
-            'checklist_task_id' => $task->id,
-            'date' => $date,
-        ]);
+        $isToday = $dateObj->isToday();
 
-        $isNew = !$submission->exists;
-        $submission->user_id = $submission->user_id ?? $user->id;
-        $submission->notes = $request->input('notes');
-        $submission->save();
+        if ($isToday) {
+            $tasks = ChecklistTask::with('assignedUsers')
+                ->where('is_active', true)
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get();
+        } else {
+            $endOfDay = $dateObj->copy()->endOfDay();
 
-        // Handle file uploads
-        $fileCount = $submission->files()->count();
-        if ($request->hasFile('files')) {
-            foreach ($request->file('files') as $file) {
-                $path = $file->store('checklist/' . $date, 'public');
-                $submission->files()->create([
-                    'file_path' => $path,
-                    'original_name' => $file->getClientOriginalName(),
-                ]);
-                $fileCount++;
+            $tasks = ChecklistTask::withTrashed()
+                ->with('assignedUsers')
+                ->whereDate('created_at', '<=', $dateObj->toDateString())
+                ->where(function ($q) use ($endOfDay) {
+                    $q->whereNull('deleted_at')
+                      ->orWhere('deleted_at', '>', $endOfDay);
+                })
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get();
+        }
+
+        $submissionsByTask = ChecklistSubmission::with(['user', 'files', 'logs.user', 'latestAnalysis.user'])
+            ->withCount('analysisLogs')
+            ->where('date', $dateObj->toDateString())
+            ->get()
+            ->keyBy('checklist_task_id');
+
+        if (!$isToday) {
+            $missingIds = $submissionsByTask->keys()->diff($tasks->pluck('id'));
+            if ($missingIds->isNotEmpty()) {
+                $extra = ChecklistTask::withTrashed()
+                    ->with('assignedUsers')
+                    ->whereIn('id', $missingIds)
+                    ->get();
+                $tasks = $tasks->merge($extra)->sortBy([['sort_order', 'asc'], ['id', 'asc']])->values();
             }
         }
 
-        // Log the action
-        ChecklistSubmissionLog::create([
-            'checklist_submission_id' => $submission->id,
-            'user_id' => $user->id,
-            'action' => $isNew ? 'submitted' : 'updated',
-            'notes_snapshot' => $submission->notes,
-            'file_count' => $fileCount,
-        ]);
+        $doneCount  = $submissionsByTask->count();
+        $totalTasks = $tasks->count();
 
-        return back()->with('success', 'Task submitted successfully.');
+        $prevDate = $dateObj->copy()->subDay()->toDateString();
+        $nextDate = $dateObj->copy()->addDay()->toDateString();
+
+        return view('checklist.report', compact(
+            'tasks', 'submissionsByTask',
+            'doneCount', 'totalTasks',
+            'dateObj', 'prevDate', 'nextDate', 'isToday'
+        ));
     }
 
-    /**
-     * Delete a submission
-     */
+    public function manage()
+    {
+        $allTasks = ChecklistTask::with('assignedUsers')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        $allUsers = User::orderBy('name')->get();
+
+        return view('checklist.manage', compact('allTasks', 'allUsers'));
+    }
+
+    public function submit(Request $request, ChecklistTask $task)
+    {
+        $today = now()->toDateString();
+
+        $assignedIds = $task->assignedUsers()->pluck('users.id')->toArray();
+        if (!empty($assignedIds) && !in_array(Auth::id(), $assignedIds)) {
+            return back()->with('error', 'You are not assigned to this task.');
+        }
+
+        $imageMimes = 'jpg,jpeg,png,gif,webp';
+        $anyMimes   = 'jpg,jpeg,png,gif,webp,pdf,doc,docx,xls,xlsx,csv';
+
+        $existing = ChecklistSubmission::with('files')->where([
+            'checklist_task_id' => $task->id,
+            'date'              => $today,
+        ])->first();
+
+        $isNew            = $existing === null;
+        $hasExistingFiles = $existing && ($existing->files->count() > 0 || $existing->file_path);
+
+        $rules = ['notes' => 'nullable|string|max:2000'];
+
+        if ($task->type === 'photo') {
+            $rules['files']   = $hasExistingFiles ? 'nullable|array|max:10' : 'required|array|min:1|max:10';
+            $rules['files.*'] = "file|max:10240|mimes:{$imageMimes}";
+        } elseif ($task->type === 'both') {
+            $rules['notes']   = 'required|string|max:2000';
+            $rules['files']   = $hasExistingFiles ? 'nullable|array|max:10' : 'required|array|min:1|max:10';
+            $rules['files.*'] = "file|max:10240|mimes:{$imageMimes}";
+        } elseif ($task->type === 'any') {
+            $rules['files']   = 'nullable|array|max:10';
+            $rules['files.*'] = "file|max:10240|mimes:{$anyMimes}";
+        }
+
+        $request->validate($rules);
+
+        $submission = ChecklistSubmission::updateOrCreate(
+            ['checklist_task_id' => $task->id, 'date' => $today],
+            ['notes' => $request->notes, 'user_id' => $isNew ? Auth::id() : $existing->user_id]
+        );
+
+        $fileCount = $request->hasFile('files') ? count($request->file('files')) : ($submission->files()->count());
+        ChecklistSubmissionLog::create([
+            'checklist_submission_id' => $submission->id,
+            'user_id'                 => Auth::id(),
+            'action'                  => $isNew ? 'submitted' : 'updated',
+            'notes_snapshot'          => $request->notes ? \Str::limit($request->notes, 200) : null,
+            'file_count'              => $fileCount,
+            'created_at'              => now(),
+        ]);
+
+        if ($request->hasFile('files')) {
+            $nextOrder = $submission->files()->max('sort_order') + 1;
+            foreach ($request->file('files') as $i => $file) {
+                $submission->files()->create([
+                    'file_path'          => $file->store("checklist/{$today}", 'public'),
+                    'file_original_name' => $file->getClientOriginalName(),
+                    'file_mime'          => $file->getMimeType(),
+                    'sort_order'         => $nextOrder + $i,
+                ]);
+            }
+        }
+
+        return back()->with('success', "'{$task->title}' submitted!");
+    }
+
     public function deleteSubmission(ChecklistSubmission $submission)
     {
+        if ($submission->user_id !== Auth::id() && Auth::user()?->role !== 'admin') {
+            abort(403);
+        }
+
         foreach ($submission->files as $file) {
             Storage::disk('public')->delete($file->file_path);
         }
-        $submission->delete();
+        if ($submission->file_path) {
+            Storage::disk('public')->delete($submission->file_path);
+        }
 
-        return back()->with('success', 'Submission deleted.');
+        $submission->delete();
+        return back()->with('success', 'Submission removed.');
     }
 
-    /**
-     * Delete a single file from a submission
-     */
     public function deleteFile(ChecklistSubmissionFile $file)
     {
+        $submission = $file->submission;
+
+        if ($submission->user_id !== Auth::id() && Auth::user()?->role !== 'admin') {
+            abort(403);
+        }
+
         Storage::disk('public')->delete($file->file_path);
         $file->delete();
 
-        return back()->with('success', 'File deleted.');
+        return back()->with('success', 'File removed.');
     }
 
-    /**
-     * Daily report page - manager view
-     */
-    public function report(Request $request)
-    {
-        $date = $request->get('date', Carbon::today()->toDateString());
-
-        $tasks = ChecklistTask::withTrashed()
-            ->orderBy('sort_order')
-            ->get();
-
-        $submissions = ChecklistSubmission::where('date', $date)
-            ->with(['user', 'files', 'logs.user', 'analysisLogs' => function ($q) {
-                $q->latest();
-            }])
-            ->get()
-            ->keyBy('checklist_task_id');
-
-        $totalTasks = ChecklistTask::where('is_active', true)->count();
-        $completedTasks = $submissions->count();
-        $progressPercent = $totalTasks > 0 ? round(($completedTasks / $totalTasks) * 100) : 0;
-
-        return view('checklist.report', compact('tasks', 'submissions', 'date', 'totalTasks', 'completedTasks', 'progressPercent'));
-    }
-
-    /**
-     * Manage tasks page - admin only
-     */
-    public function manage()
-    {
-        $tasks = ChecklistTask::orderBy('sort_order')->get();
-        return view('checklist.manage', compact('tasks'));
-    }
-
-    /**
-     * Store a new task
-     */
     public function storeTask(Request $request)
     {
-        $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string|max:500',
-            'type' => 'required|in:photo,note,any,both',
-            'ai_prompt' => 'nullable|string|max:2000',
+        $validated = $request->validate([
+            'title'       => 'required|string|max:255',
+            'description' => 'nullable|string|max:1000',
+            'type'        => 'required|in:photo,note,any,both',
+            'ai_prompt'   => 'nullable|string|max:2000',
         ]);
 
-        $maxOrder = ChecklistTask::max('sort_order') ?? 0;
-
-        ChecklistTask::create([
-            'title' => $request->title,
-            'description' => $request->description,
-            'type' => $request->type,
-            'ai_prompt' => $request->ai_prompt,
-            'sort_order' => $maxOrder + 1,
+        $task = ChecklistTask::create([
+            ...$validated,
+            'sort_order' => (ChecklistTask::max('sort_order') ?? 0) + 1,
+            'is_active'  => true,
         ]);
 
-        return back()->with('success', 'Task created.');
+        $userIds = array_filter((array) $request->input('assigned_users', []));
+        $task->assignedUsers()->sync($userIds);
+
+        return back()->with('success', 'Task added!');
     }
 
-    /**
-     * Update an existing task
-     */
     public function updateTask(Request $request, ChecklistTask $task)
     {
-        $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string|max:500',
-            'type' => 'required|in:photo,note,any,both',
-            'is_active' => 'nullable|boolean',
-            'ai_prompt' => 'nullable|string|max:2000',
+        $validated = $request->validate([
+            'title'       => 'required|string|max:255',
+            'description' => 'nullable|string|max:1000',
+            'type'        => 'required|in:photo,note,any,both',
+            'is_active'   => 'boolean',
+            'ai_prompt'   => 'nullable|string|max:2000',
         ]);
 
-        $task->update([
-            'title' => $request->title,
-            'description' => $request->description,
-            'type' => $request->type,
-            'is_active' => $request->boolean('is_active'),
-            'ai_prompt' => $request->ai_prompt,
-        ]);
+        $task->update($validated);
 
-        return back()->with('success', 'Task updated.');
+        $userIds = array_filter((array) $request->input('assigned_users', []));
+        $task->assignedUsers()->sync($userIds);
+
+        return back()->with('success', 'Task updated!');
     }
 
-    /**
-     * Delete a task (soft delete)
-     */
     public function destroyTask(ChecklistTask $task)
     {
         $task->delete();
         return back()->with('success', 'Task deleted.');
     }
 
-    /**
-     * Reorder tasks via drag-and-drop
-     */
     public function reorderTasks(Request $request)
     {
-        $request->validate([
-            'order' => 'required|array',
-            'order.*' => 'integer|exists:checklist_tasks,id',
-        ]);
-
-        foreach ($request->order as $index => $taskId) {
-            ChecklistTask::where('id', $taskId)->update(['sort_order' => $index]);
+        foreach ($request->input('order', []) as $index => $id) {
+            ChecklistTask::where('id', $id)->update(['sort_order' => $index]);
         }
-
-        return response()->json(['success' => true]);
+        return response()->json(['ok' => true]);
     }
 
-    /**
-     * AI Analyze a submission
-     */
     public function analyzeSubmission(Request $request, ChecklistSubmission $submission)
     {
-        $task = $submission->task;
-        $submission->load('files');
+        $submission->load(['task', 'files']);
+        $task     = $submission->task;
+        $imgFiles = $submission->files->filter(fn($f) => $f->isImage());
 
-        $defaultPrompt = "You are a quality inspector. Analyze the submitted checklist item. Check if the task was completed properly based on the images and notes provided. Be concise but thorough.";
-        $prompt = $task->ai_prompt ?: $defaultPrompt;
+        if (!$task) {
+            return response()->json(['error' => 'Task not found for this submission.'], 404);
+        }
 
-        $fullPrompt = "Task: {$task->title}\n";
+        $prompt  = "You are reviewing a daily operational task submission for a business.\n\n";
+        $prompt .= "Task: {$task->title}\n";
         if ($task->description) {
-            $fullPrompt .= "Description: {$task->description}\n";
+            $prompt .= "Task Description: {$task->description}\n";
         }
         if ($submission->notes) {
-            $fullPrompt .= "Notes from staff: {$submission->notes}\n";
+            $prompt .= "Staff Notes: {$submission->notes}\n";
         }
-        $fullPrompt .= "\nInstructions: {$prompt}";
+        if ($imgFiles->isEmpty()) {
+            $prompt .= "\n(No images were submitted for this task.)\n";
+        }
 
-        $content = [
-            ['type' => 'text', 'text' => $fullPrompt],
-        ];
+        if ($task->ai_prompt) {
+            $prompt .= "\nAnalysis Focus: {$task->ai_prompt}";
+            $prompt .= "\n\nUsing the above focus, provide a concise analysis in 2-4 sentences based on the submission.";
+        } else {
+            $prompt .= "\nBased on the above, provide a concise analysis in 2-4 sentences: Was the task completed properly? What do the images show (if any)? Any observations, concerns, or recommendations?";
+        }
 
-        foreach ($submission->files as $file) {
-            $url = url('storage/' . $file->file_path);
+        $content = [['type' => 'text', 'text' => $prompt]];
+
+        foreach ($imgFiles->take(5) as $f) {
             $content[] = [
-                'type' => 'image_url',
-                'image_url' => ['url' => $url],
+                'type'      => 'image_url',
+                'image_url' => [
+                    'url'    => url(Storage::url($f->file_path)),
+                    'detail' => 'auto',
+                ],
             ];
         }
 
-        try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . config('services.openai.key'),
-                'Content-Type' => 'application/json',
-            ])->timeout(60)->post('https://api.openai.com/v1/chat/completions', [
-                'model' => 'gpt-4o',
-                'messages' => [
-                    ['role' => 'user', 'content' => $content],
-                ],
-                'max_tokens' => 1000,
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . config('services.openai.key'),
+            'Content-Type'  => 'application/json',
+        ])->timeout(30)->post('https://api.openai.com/v1/chat/completions', [
+            'model'      => 'gpt-4o',
+            'max_tokens' => 512,
+            'messages'   => [
+                ['role' => 'user', 'content' => $content],
+            ],
+        ]);
+
+        if ($response->successful()) {
+            $analysisText = $response->json('choices.0.message.content');
+
+            ChecklistAnalysisLog::create([
+                'submission_id'   => $submission->id,
+                'user_id'         => Auth::id(),
+                'prompt_used'     => $prompt,
+                'analysis_result' => $analysisText,
             ]);
 
-            $result = $response->json('choices.0.message.content', 'Analysis failed.');
-        } catch (\Exception $e) {
-            $result = 'Error: ' . $e->getMessage();
+            return response()->json([
+                'analysis'    => $analysisText,
+                'prompt_used' => $prompt,
+                'analyzed_by' => Auth::user()?->name,
+                'analyzed_at' => now()->format('M j, h:i A'),
+            ]);
         }
 
-        ChecklistAnalysisLog::create([
-            'submission_id' => $submission->id,
-            'user_id' => Auth::id(),
-            'prompt_used' => $fullPrompt,
-            'analysis_result' => $result,
-        ]);
-
         return response()->json([
-            'success' => true,
-            'result' => $result,
-        ]);
+            'error' => 'AI analysis failed (' . $response->status() . '). Check your API key.',
+        ], 500);
     }
 
-    /**
-     * Get analysis logs for a submission
-     */
     public function getAnalysisLogs(ChecklistSubmission $submission)
     {
-        $logs = $submission->analysisLogs()
-            ->with('user')
-            ->latest()
-            ->get();
+        $logs = $submission->analysisLogs()->with('user')->get()->map(fn($log) => [
+            'id'          => $log->id,
+            'analysis'    => $log->analysis_result,
+            'prompt_used' => $log->prompt_used,
+            'user'        => $log->user?->name ?? 'Unknown',
+            'created_at'  => $log->created_at->format('M j, Y g:i A'),
+        ]);
 
-        return response()->json($logs);
+        return response()->json(['logs' => $logs]);
     }
 }

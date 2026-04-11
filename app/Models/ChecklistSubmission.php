@@ -2,47 +2,54 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ChecklistSubmission extends Model
 {
-    use HasFactory;
-
     protected $fillable = [
-        'checklist_task_id',
-        'user_id',
-        'date',
-        'notes',
-        'file_path',
+        'checklist_task_id', 'user_id', 'date',
+        'notes', 'file_path', 'file_original_name', 'file_mime',
     ];
 
     protected $casts = [
         'date' => 'date',
     ];
 
-    public function task()
+    public function task(): BelongsTo
     {
-        return $this->belongsTo(ChecklistTask::class, 'checklist_task_id')->withTrashed();
+        return $this->belongsTo(ChecklistTask::class, 'checklist_task_id');
     }
 
-    public function user()
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
-    public function files()
+    public function files(): HasMany
     {
-        return $this->hasMany(ChecklistSubmissionFile::class);
+        return $this->hasMany(ChecklistSubmissionFile::class)->orderBy('sort_order');
     }
 
-    public function logs()
+    public function logs(): HasMany
     {
-        return $this->hasMany(ChecklistSubmissionLog::class);
+        return $this->hasMany(ChecklistSubmissionLog::class)->orderBy('created_at', 'desc');
     }
 
-    public function analysisLogs()
+    public function analysisLogs(): HasMany
     {
-        return $this->hasMany(ChecklistAnalysisLog::class, 'submission_id');
+        return $this->hasMany(ChecklistAnalysisLog::class, 'submission_id')->orderBy('created_at', 'desc');
+    }
+
+    public function latestAnalysis(): HasOne
+    {
+        return $this->hasOne(ChecklistAnalysisLog::class, 'submission_id')->latestOfMany();
+    }
+
+    public function isImage(): bool
+    {
+        return $this->file_mime && str_starts_with($this->file_mime, 'image/');
     }
 }

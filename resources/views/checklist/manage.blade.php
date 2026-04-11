@@ -1,173 +1,267 @@
-<x-layout title="Manage Tasks">
-    <div class="flex items-center justify-between mb-6">
+<x-layout>
+  <x-slot name="heading">Manage Checklist Tasks</x-slot>
+  <x-slot name="title">Manage Checklist Tasks</x-slot>
+
+  <div class="p-4 max-w-4xl mx-auto space-y-4 mt-16">
+
+    {{-- Header --}}
+    <div class="flex items-center justify-between flex-wrap gap-2">
+      <div>
         <h1 class="text-xl font-bold text-gray-800">Manage Tasks</h1>
+        <p class="text-sm text-gray-500">Add, edit, reorder, or delete checklist tasks.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <a href="{{ route('checklist.report') }}"
+           class="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 text-gray-700">
+          📋 View Report
+        </a>
+        <a href="{{ route('checklist.index') }}"
+           class="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 text-gray-700">
+          ← Checklist
+        </a>
+      </div>
     </div>
 
-    {{-- Add New Task --}}
-    <div class="bg-white rounded-xl shadow-sm border p-5 mb-6" x-data="{ open: false }">
-        <button @click="open = !open" class="text-sm font-medium text-blue-600 hover:text-blue-800">
-            + Add New Task
+    {{-- Alerts --}}
+    @if(session('success'))
+      <div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg text-sm">✓ {{ session('success') }}</div>
+    @endif
+    @if(session('error'))
+      <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">{{ session('error') }}</div>
+    @endif
+    @if($errors->any())
+      <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
+        @foreach($errors->all() as $e)<div>• {{ $e }}</div>@endforeach
+      </div>
+    @endif
+
+    {{-- ====== ADD TASK FORM ====== --}}
+    <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-4 space-y-3">
+      <h2 class="font-semibold text-gray-800 text-sm">Add New Task</h2>
+
+      <form method="POST" action="{{ route('checklist.store-task') }}" class="space-y-3">
+        @csrf
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <input type="text" name="title" placeholder="Task title..." required
+                 class="sm:col-span-2 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+          <select name="type" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+            <option value="any">📎 Any (photo or note)</option>
+            <option value="photo">📸 Photo required</option>
+            <option value="note">📝 Note only</option>
+            <option value="both">📸📝 Photo + Note (both required)</option>
+          </select>
+        </div>
+        <input type="text" name="description" placeholder="Description (optional)..."
+               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+
+        <div>
+          <label class="text-xs text-gray-500 mb-1 block">AI Prompt Focus <span class="text-gray-400">(optional — guides what the AI checks for)</span>:</label>
+          <textarea name="ai_prompt" rows="2" placeholder="e.g. Check if the workstation is clean and items are organized properly..."
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400 resize-none"></textarea>
+        </div>
+
+        <div>
+          <label class="text-xs text-gray-500 mb-1.5 block">Assign to (leave blank = anyone can submit):</label>
+          <div class="flex flex-wrap gap-2">
+            @foreach($allUsers as $u)
+              <label class="flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50">
+                <input type="checkbox" name="assigned_users[]" value="{{ $u->id }}" class="accent-blue-600">
+                {{ $u->name }}
+              </label>
+            @endforeach
+          </div>
+        </div>
+
+        <button type="submit"
+                class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 font-medium">
+          + Add Task
         </button>
-        <div x-show="open" x-transition class="mt-4">
-            <form method="POST" action="/checklist/tasks" class="space-y-3">
-                @csrf
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Title *</label>
-                        <input type="text" name="title" required class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Type *</label>
-                        <select name="type" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
-                            <option value="any">Any</option>
-                            <option value="photo">Photo</option>
-                            <option value="note">Note</option>
-                            <option value="both">Both</option>
-                        </select>
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                    <input type="text" name="description" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">AI Prompt (custom instructions for AI analysis)</label>
-                    <textarea name="ai_prompt" rows="2" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" placeholder="e.g., Check if the floor is clean and mopped properly..."></textarea>
-                </div>
-                <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition">Create Task</button>
-            </form>
-        </div>
+      </form>
     </div>
 
-    {{-- Task List --}}
-    <div class="space-y-3" x-data="taskReorder()" x-ref="taskList">
-        @foreach($tasks as $task)
-        <div class="bg-white rounded-xl shadow-sm border p-5 task-item" data-id="{{ $task->id }}"
-             x-data="{ editing: false }">
-            <div class="flex items-start justify-between">
-                <div class="flex items-center space-x-3 flex-1">
-                    <div class="cursor-grab text-gray-300 hover:text-gray-500 drag-handle" title="Drag to reorder">
-                        &#9776;
-                    </div>
-                    <div class="flex-1">
-                        <div class="flex items-center space-x-2">
-                            <h3 class="font-semibold text-gray-800">{{ $task->title }}</h3>
-                            <span class="text-xs px-2 py-0.5 rounded-full {{ $task->type === 'photo' ? 'bg-purple-100 text-purple-600' : ($task->type === 'note' ? 'bg-yellow-100 text-yellow-600' : ($task->type === 'both' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600')) }}">{{ $task->type }}</span>
-                            @if(!$task->is_active)
-                                <span class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600">Inactive</span>
-                            @endif
-                        </div>
-                        @if($task->description)
-                            <p class="text-sm text-gray-500 mt-0.5">{{ $task->description }}</p>
-                        @endif
-                        @if($task->ai_prompt)
-                            <p class="text-xs text-purple-500 mt-0.5">AI: {{ Str::limit($task->ai_prompt, 80) }}</p>
-                        @endif
-                    </div>
-                </div>
-                <div class="flex items-center space-x-2">
-                    <button @click="editing = !editing" class="text-sm text-blue-600 hover:text-blue-800">Edit</button>
-                    <form method="POST" action="/checklist/tasks/{{ $task->id }}" class="inline">
-                        @csrf @method('DELETE')
-                        <button type="submit" class="text-sm text-red-500 hover:text-red-700" onclick="return confirm('Delete this task?')">Delete</button>
-                    </form>
-                </div>
-            </div>
+    {{-- ====== TASK LIST ====== --}}
+    <div class="bg-white border border-gray-200 rounded-xl shadow-sm divide-y divide-gray-100">
+      <div class="px-4 py-3 flex items-center justify-between">
+        <h2 class="font-semibold text-gray-800 text-sm">All Tasks ({{ $allTasks->count() }})</h2>
+        @if($allTasks->count() > 1)
+          <span class="text-xs text-gray-400">⠿ Drag to reorder</span>
+        @endif
+      </div>
 
-            {{-- Edit form --}}
-            <div x-show="editing" x-transition class="mt-4 border-t pt-4">
-                <form method="POST" action="/checklist/tasks/{{ $task->id }}" class="space-y-3">
-                    @csrf @method('PATCH')
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Title</label>
-                            <input type="text" name="title" value="{{ $task->title }}" required class="w-full px-3 py-2 border rounded-lg text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                            <select name="type" class="w-full px-3 py-2 border rounded-lg text-sm">
-                                <option value="any" {{ $task->type === 'any' ? 'selected' : '' }}>Any</option>
-                                <option value="photo" {{ $task->type === 'photo' ? 'selected' : '' }}>Photo</option>
-                                <option value="note" {{ $task->type === 'note' ? 'selected' : '' }}>Note</option>
-                                <option value="both" {{ $task->type === 'both' ? 'selected' : '' }}>Both</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                        <input type="text" name="description" value="{{ $task->description }}" class="w-full px-3 py-2 border rounded-lg text-sm">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">AI Prompt</label>
-                        <textarea name="ai_prompt" rows="2" class="w-full px-3 py-2 border rounded-lg text-sm">{{ $task->ai_prompt }}</textarea>
-                    </div>
-                    <div class="flex items-center space-x-3">
-                        <label class="flex items-center space-x-2">
-                            <input type="hidden" name="is_active" value="0">
-                            <input type="checkbox" name="is_active" value="1" {{ $task->is_active ? 'checked' : '' }} class="rounded border-gray-300 text-blue-600">
-                            <span class="text-sm text-gray-700">Active</span>
-                        </label>
-                    </div>
-                    <div class="flex space-x-2">
-                        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">Save</button>
-                        <button type="button" @click="editing = false" class="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200">Cancel</button>
-                    </div>
-                </form>
+      <div id="task-sort-list" class="divide-y divide-gray-100">
+      @forelse($allTasks as $t)
+        @php $assignedIds = $t->assignedUsers->pluck('id')->toArray(); @endphp
+
+        <div x-data="{ editing: false }"
+             data-id="{{ $t->id }}"
+             class="task-row {{ $t->is_active ? '' : 'opacity-60 bg-gray-50' }}">
+
+          {{-- View Row --}}
+          <div class="flex items-center gap-3 px-4 py-3" x-show="!editing">
+            <span class="drag-handle cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0 select-none text-lg leading-none" title="Drag to reorder">⠿</span>
+            <div class="w-2 h-2 rounded-full flex-shrink-0 {{ $t->is_active ? 'bg-green-500' : 'bg-gray-300' }}"></div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center flex-wrap gap-1.5">
+                <span class="text-sm font-medium text-gray-800">{{ $t->title }}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded-full
+                  {{ $t->type === 'photo' ? 'bg-blue-100 text-blue-700' : ($t->type === 'note' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600') }}">
+                  {{ $t->type === 'photo' ? '📸' : ($t->type === 'note' ? '📝' : '📎') }}
+                  {{ ucfirst($t->type) }}
+                </span>
+                @if(!$t->is_active)
+                  <span class="text-xs text-gray-400 italic">(inactive)</span>
+                @endif
+              </div>
+              @if($t->description)
+                <p class="text-xs text-gray-400 mt-0.5">{{ $t->description }}</p>
+              @endif
+              @if($t->assignedUsers->count())
+                <p class="text-xs text-indigo-500 mt-0.5">→ {{ $t->assignedUsers->pluck('name')->implode(', ') }}</p>
+              @else
+                <p class="text-xs text-gray-400 mt-0.5">→ Anyone</p>
+              @endif
+              @if($t->ai_prompt)
+                <p class="text-xs text-purple-500 mt-0.5 italic truncate max-w-sm" title="{{ $t->ai_prompt }}">🤖 {{ $t->ai_prompt }}</p>
+              @endif
             </div>
+            <div class="flex gap-1 flex-shrink-0">
+              <button @click="editing = true"
+                      class="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 text-gray-600">Edit</button>
+              <form method="POST" action="{{ route('checklist.update-task', $t) }}">
+                @csrf @method('PATCH')
+                <input type="hidden" name="title"       value="{{ $t->title }}">
+                <input type="hidden" name="description" value="{{ $t->description }}">
+                <input type="hidden" name="type"        value="{{ $t->type }}">
+                <input type="hidden" name="ai_prompt"   value="{{ $t->ai_prompt }}">
+                <input type="hidden" name="is_active"   value="{{ $t->is_active ? '0' : '1' }}">
+                @foreach($assignedIds as $uid)
+                  <input type="hidden" name="assigned_users[]" value="{{ $uid }}">
+                @endforeach
+                <button type="submit"
+                        class="text-xs px-2 py-1 rounded border {{ $t->is_active ? 'border-amber-300 text-amber-700 hover:bg-amber-50' : 'border-green-300 text-green-700 hover:bg-green-50' }}">
+                  {{ $t->is_active ? 'Disable' : 'Enable' }}
+                </button>
+              </form>
+              <form method="POST" action="{{ route('checklist.destroy-task', $t) }}"
+                    onsubmit="return confirm('Delete \'{{ addslashes($t->title) }}\'? This cannot be undone.')">
+                @csrf @method('DELETE')
+                <button type="submit"
+                        class="text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50">
+                  Delete
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {{-- Edit Mode --}}
+          <form method="POST" action="{{ route('checklist.update-task', $t) }}"
+                class="px-4 py-3 space-y-2 bg-blue-50/30" x-show="editing" x-transition>
+            @csrf @method('PATCH')
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input type="text" name="title" value="{{ $t->title }}" required
+                     class="sm:col-span-2 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+              <select name="type" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+                <option value="any"   {{ $t->type === 'any'   ? 'selected' : '' }}>📎 Any</option>
+                <option value="photo" {{ $t->type === 'photo' ? 'selected' : '' }}>📸 Photo</option>
+                <option value="note"  {{ $t->type === 'note'  ? 'selected' : '' }}>📝 Note</option>
+                <option value="both"  {{ $t->type === 'both'  ? 'selected' : '' }}>📸📝 Photo + Note</option>
+              </select>
+            </div>
+            <input type="text" name="description" value="{{ $t->description }}"
+                   placeholder="Description (optional)..."
+                   class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+            <div>
+              <label class="text-xs text-gray-500 mb-1 block">AI Prompt Focus <span class="text-gray-400">(optional)</span>:</label>
+              <textarea name="ai_prompt" rows="2" placeholder="e.g. Check if the workstation is clean and items are organized properly..."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400 resize-none">{{ $t->ai_prompt }}</textarea>
+            </div>
+            <input type="hidden" name="is_active" value="{{ $t->is_active ? '1' : '0' }}">
+            <div>
+              <label class="text-xs text-gray-500 mb-1.5 block">Assigned to (blank = anyone):</label>
+              <div class="flex flex-wrap gap-2">
+                @foreach($allUsers as $u)
+                  <label class="flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 bg-white">
+                    <input type="checkbox" name="assigned_users[]" value="{{ $u->id }}"
+                           {{ in_array($u->id, $assignedIds) ? 'checked' : '' }}
+                           class="accent-blue-600">
+                    {{ $u->name }}
+                  </label>
+                @endforeach
+              </div>
+            </div>
+            <div class="flex gap-2 pt-1">
+              <button type="submit" class="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 font-medium">Save Changes</button>
+              <button type="button" @click="editing = false" class="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded-lg hover:bg-gray-200">Cancel</button>
+            </div>
+          </form>
         </div>
-        @endforeach
+      @empty
+        <div class="px-4 py-10 text-center text-sm text-gray-400">No tasks yet. Add one above.</div>
+      @endforelse
+      </div> {{-- #task-sort-list --}}
     </div>
 
-    <script>
-    function taskReorder() {
-        return {
-            init() {
-                // Simple drag-and-drop reorder using HTML5 drag API
-                const list = this.$refs.taskList;
-                let dragItem = null;
+  </div>
 
-                list.querySelectorAll('.task-item').forEach(item => {
-                    const handle = item.querySelector('.drag-handle');
-                    handle.addEventListener('mousedown', () => {
-                        item.draggable = true;
-                    });
-                    item.addEventListener('dragstart', (e) => {
-                        dragItem = item;
-                        item.classList.add('opacity-50');
-                    });
-                    item.addEventListener('dragend', () => {
-                        item.draggable = false;
-                        item.classList.remove('opacity-50');
-                        this.saveOrder();
-                    });
-                    item.addEventListener('dragover', (e) => {
-                        e.preventDefault();
-                        if (dragItem && dragItem !== item) {
-                            const rect = item.getBoundingClientRect();
-                            const mid = rect.top + rect.height / 2;
-                            if (e.clientY < mid) {
-                                list.insertBefore(dragItem, item);
-                            } else {
-                                list.insertBefore(dragItem, item.nextSibling);
-                            }
-                        }
-                    });
-                });
-            },
+  <script>
+    (function () {
+      const list    = document.getElementById('task-sort-list');
+      if (!list) return;
 
-            async saveOrder() {
-                const items = this.$refs.taskList.querySelectorAll('.task-item');
-                const order = Array.from(items).map(i => parseInt(i.dataset.id));
-                await fetch('/checklist/tasks/reorder', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content,
-                    },
-                    body: JSON.stringify({ order }),
-                });
-            }
+      let dragging  = null;
+
+      list.querySelectorAll('.task-row').forEach(row => {
+        row.setAttribute('draggable', 'false');
+
+        const handle = row.querySelector('.drag-handle');
+        if (handle) {
+          handle.addEventListener('mousedown', () => row.setAttribute('draggable', 'true'));
+          handle.addEventListener('mouseup',   () => row.setAttribute('draggable', 'false'));
         }
-    }
-    </script>
+
+        row.addEventListener('dragstart', e => {
+          dragging = row;
+          row.classList.add('opacity-40', 'ring-2', 'ring-blue-400');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+
+        row.addEventListener('dragend', () => {
+          row.setAttribute('draggable', 'false');
+          row.classList.remove('opacity-40', 'ring-2', 'ring-blue-400');
+          list.querySelectorAll('.task-row').forEach(r => r.classList.remove('border-t-2', 'border-blue-400'));
+          dragging = null;
+          saveOrder();
+        });
+
+        row.addEventListener('dragover', e => {
+          e.preventDefault();
+          if (!dragging || dragging === row) return;
+          const rect = row.getBoundingClientRect();
+          const mid  = rect.top + rect.height / 2;
+          list.querySelectorAll('.task-row').forEach(r => r.classList.remove('border-t-2', 'border-blue-400'));
+          if (e.clientY < mid) {
+            row.classList.add('border-t-2', 'border-blue-400');
+            list.insertBefore(dragging, row);
+          } else {
+            row.classList.add('border-t-2', 'border-blue-400');
+            list.insertBefore(dragging, row.nextSibling);
+          }
+        });
+      });
+
+      function saveOrder() {
+        const ids = [...list.querySelectorAll('.task-row')].map(r => r.dataset.id);
+        fetch('{{ route("checklist.reorder") }}', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content
+                         || '{{ csrf_token() }}',
+          },
+          body: JSON.stringify({ order: ids }),
+        });
+      }
+    })();
+  </script>
+
 </x-layout>

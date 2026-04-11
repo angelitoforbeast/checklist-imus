@@ -2,34 +2,27 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ChecklistTask extends Model
 {
-    use HasFactory, SoftDeletes;
+    use SoftDeletes;
 
-    protected $fillable = [
-        'title',
-        'description',
-        'type',
-        'is_active',
-        'sort_order',
-        'ai_prompt',
-    ];
+    protected $fillable = ['title', 'description', 'type', 'is_active', 'sort_order', 'ai_prompt'];
 
     protected $casts = [
         'is_active' => 'boolean',
     ];
 
-    public function submissions()
+    public function submissions(): HasMany
     {
         return $this->hasMany(ChecklistSubmission::class);
     }
 
-    public function submissionForDate($date)
+    public function assignedUsers(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
     {
-        return $this->submissions()->where('date', $date)->first();
+        return $this->belongsToMany(User::class, 'checklist_task_users');
     }
 }
