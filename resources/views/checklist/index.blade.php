@@ -376,8 +376,9 @@
             </div>
           </div>
 
-          {{-- ===== PINNED REFERENCE IMAGE (fixed between header and chat) ===== --}}
-          @if($task->reference_image)
+          {{-- ===== PINNED REFERENCE FILES (fixed between header and chat) ===== --}}
+          @php $refFiles = $task->referenceFiles ?? collect(); @endphp
+          @if($task->reference_image || $refFiles->count())
             <div x-data="{ pinExpanded: false }" class="flex-shrink-0 border-b border-gray-200 bg-white">
               <div class="max-w-lg mx-auto px-4 py-2">
                 <div class="flex items-start gap-2">
@@ -385,17 +386,36 @@
                   <div class="flex-1 min-w-0">
                     <button type="button" @click="pinExpanded = !pinExpanded"
                             class="flex items-center gap-2 text-xs text-gray-500 font-medium mb-1 hover:text-gray-700 transition w-full">
-                      <span>📌 Reference Photo</span>
+                      <span>📌 Reference {{ $refFiles->count() > 1 ? 'Files ('.$refFiles->count().')' : 'Photo' }}</span>
                       <svg class="w-3.5 h-3.5 transition-transform" :class="pinExpanded && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                     </button>
-                    <div class="overflow-hidden transition-all duration-300" :style="pinExpanded ? 'max-height: 300px' : 'max-height: 60px'">
-                      <img src="{{ Storage::url($task->reference_image) }}"
-                           data-lightbox-src="{{ Storage::url($task->reference_image) }}"
-                           data-lightbox-sender="Reference Photo"
-                           data-lightbox-time="{{ $task->created_at->format('M d, Y') }}"
-                           @click="$dispatch('open-lightbox', '{{ Storage::url($task->reference_image) }}')"
-                           class="w-full max-w-[200px] object-cover rounded-xl cursor-zoom-in active:scale-95 transition-transform"
-                           :class="pinExpanded ? 'h-auto' : 'h-[60px]'">
+                    <div class="overflow-hidden transition-all duration-300" :style="pinExpanded ? 'max-height: 500px' : 'max-height: 60px'">
+                      <div class="flex flex-wrap gap-2">
+                        @if($task->reference_image && $refFiles->where('file_path', $task->reference_image)->isEmpty())
+                          <img src="{{ Storage::url($task->reference_image) }}"
+                               data-lightbox-src="{{ Storage::url($task->reference_image) }}"
+                               data-lightbox-sender="Reference Photo"
+                               data-lightbox-time="{{ $task->created_at->format('M d, Y') }}"
+                               @click="$dispatch('open-lightbox', '{{ Storage::url($task->reference_image) }}')"
+                               class="max-w-[200px] object-cover rounded-xl cursor-zoom-in active:scale-95 transition-transform"
+                               :class="pinExpanded ? 'h-auto' : 'h-[60px]'">
+                        @endif
+                        @foreach($refFiles as $rf)
+                          @if($rf->isVideo())
+                            <video src="{{ Storage::url($rf->file_path) }}" controls
+                                   class="max-w-[200px] rounded-xl"
+                                   :class="pinExpanded ? 'h-auto' : 'h-[60px]'"></video>
+                          @else
+                            <img src="{{ Storage::url($rf->file_path) }}"
+                                 data-lightbox-src="{{ Storage::url($rf->file_path) }}"
+                                 data-lightbox-sender="Reference Photo"
+                                 data-lightbox-time="{{ $task->created_at->format('M d, Y') }}"
+                                 @click="$dispatch('open-lightbox', '{{ Storage::url($rf->file_path) }}')"
+                                 class="max-w-[200px] object-cover rounded-xl cursor-zoom-in active:scale-95 transition-transform"
+                                 :class="pinExpanded ? 'h-auto' : 'h-[60px]'">
+                          @endif
+                        @endforeach
+                      </div>
                     </div>
                     <p class="text-[10px] text-gray-400 mt-0.5" x-text="pinExpanded ? 'Tap to collapse' : 'Tap to expand'"></p>
                   </div>

@@ -165,17 +165,26 @@
           </div>
         </div>
 
-        {{-- Reference Image --}}
-        <div x-data="{ preview: null }">
-          <label class="text-xs font-medium text-gray-600 mb-1 block">Reference Photo <span class="text-gray-400 font-normal">(optional)</span></label>
-          <div class="flex items-center gap-3">
-            <label class="cursor-pointer px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm text-gray-600 transition inline-flex items-center gap-1.5 active:scale-95">
-              <i class="fa-solid fa-camera"></i> Choose Photo
-              <input type="file" name="reference_image" accept="image/*" class="hidden"
-                     @change="if($event.target.files[0]) { preview = URL.createObjectURL($event.target.files[0]) }">
-            </label>
-            <template x-if="preview">
-              <img :src="preview" class="w-14 h-14 object-cover rounded-xl border border-gray-200">
+        {{-- Reference Files (multiple images/videos) --}}
+        <div x-data="{ previews: [] }">
+          <label class="text-xs font-medium text-gray-600 mb-1 block">Reference Photos/Videos <span class="text-gray-400 font-normal">(optional, multiple)</span></label>
+          <label class="cursor-pointer px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm text-gray-600 transition inline-flex items-center gap-1.5 active:scale-95">
+            <i class="fa-solid fa-photo-film"></i> Choose Files
+            <input type="file" name="reference_files[]" accept="image/*,video/*" multiple class="hidden"
+                   @change="previews = [...$event.target.files].map(f => ({ url: URL.createObjectURL(f), type: f.type }))">
+          </label>
+          <div class="flex flex-wrap gap-2 mt-2" x-show="previews.length > 0">
+            <template x-for="(p, i) in previews" :key="i">
+              <div class="relative">
+                <template x-if="p.type.startsWith('image')">
+                  <img :src="p.url" class="w-14 h-14 object-cover rounded-xl border border-gray-200">
+                </template>
+                <template x-if="p.type.startsWith('video')">
+                  <div class="w-14 h-14 rounded-xl border border-gray-200 bg-gray-800 flex items-center justify-center">
+                    <i class="fa-solid fa-play text-white text-xs"></i>
+                  </div>
+                </template>
+              </div>
             </template>
           </div>
         </div>
@@ -265,10 +274,25 @@
                   <span class="text-xs text-emerald-600 italic">{{ $t->approval_prompt }}</span>
                 </div>
               @endif
-              @if($t->reference_image)
+              @php $refFiles = $t->referenceFiles; @endphp
+              @if($t->reference_image || $refFiles->count())
                 <div class="flex items-start gap-2">
                   <span class="text-xs text-gray-400 w-20 flex-shrink-0">Reference</span>
-                  <img src="{{ Storage::url($t->reference_image) }}" class="w-16 h-16 object-cover rounded-xl border border-gray-200">
+                  <div class="flex flex-wrap gap-2">
+                    @if($t->reference_image && $refFiles->where('file_path', $t->reference_image)->isEmpty())
+                      <img src="{{ Storage::url($t->reference_image) }}" class="w-16 h-16 object-cover rounded-xl border border-gray-200">
+                    @endif
+                    @foreach($refFiles as $rf)
+                      @if($rf->isVideo())
+                        <div class="w-16 h-16 rounded-xl border border-gray-200 bg-gray-800 flex items-center justify-center relative overflow-hidden">
+                          <video src="{{ Storage::url($rf->file_path) }}" class="w-full h-full object-cover"></video>
+                          <div class="absolute inset-0 flex items-center justify-center bg-black/30"><i class="fa-solid fa-play text-white text-xs"></i></div>
+                        </div>
+                      @else
+                        <img src="{{ Storage::url($rf->file_path) }}" class="w-16 h-16 object-cover rounded-xl border border-gray-200">
+                      @endif
+                    @endforeach
+                  </div>
                 </div>
               @endif
 
@@ -415,25 +439,49 @@
                 </div>
               </div>
 
-              {{-- Reference Image --}}
-              <div x-data="{ editPreview: {{ $t->reference_image ? "'" . Storage::url($t->reference_image) . "'" : 'null' }}, removeImg: false }">
-                <label class="text-xs font-medium text-gray-600 mb-1 block">Reference Photo</label>
-                <div class="flex items-center gap-3">
-                  <label class="cursor-pointer px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm text-gray-600 transition inline-flex items-center gap-1.5 active:scale-95">
-                    <i class="fa-solid fa-camera"></i> {{ $t->reference_image ? 'Change' : 'Choose' }}
-                    <input type="file" name="reference_image" accept="image/*" class="hidden"
-                           @change="if($event.target.files[0]) { editPreview = URL.createObjectURL($event.target.files[0]); removeImg = false; }">
-                  </label>
-                  <template x-if="editPreview && !removeImg">
-                    <div class="flex items-center gap-2">
-                      <img :src="editPreview" class="w-14 h-14 object-cover rounded-xl border border-gray-200">
-                      <button type="button" @click="removeImg = true; editPreview = null" class="text-xs text-red-500 hover:text-red-700">
-                        <i class="fa-solid fa-xmark"></i> Remove
-                      </button>
+              {{-- Reference Files --}}
+              <div x-data="{ newPreviews: [] }">
+                <label class="text-xs font-medium text-gray-600 mb-1 block">Reference Photos/Videos</label>
+                {{-- Existing reference files --}}
+                @if($t->referenceFiles->count())
+                  <div class="flex flex-wrap gap-2 mb-2">
+                    @foreach($t->referenceFiles as $rf)
+                      <div x-data="{ deleted: false }" x-show="!deleted" class="relative group">
+                        @if($rf->isVideo())
+                          <div class="w-14 h-14 rounded-xl border border-gray-200 bg-gray-800 flex items-center justify-center relative overflow-hidden">
+                            <video src="{{ Storage::url($rf->file_path) }}" class="w-full h-full object-cover"></video>
+                            <div class="absolute inset-0 flex items-center justify-center bg-black/30"><i class="fa-solid fa-play text-white text-xs"></i></div>
+                          </div>
+                        @else
+                          <img src="{{ Storage::url($rf->file_path) }}" class="w-14 h-14 object-cover rounded-xl border border-gray-200">
+                        @endif
+                        <button type="button" @click="deleted = true; $el.closest('.relative').querySelector('.del-input').disabled = false"
+                                class="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow">
+                          <i class="fa-solid fa-xmark"></i>
+                        </button>
+                        <input type="hidden" name="delete_reference_files[]" value="{{ $rf->id }}" disabled class="del-input">
+                      </div>
+                    @endforeach
+                  </div>
+                @endif
+                {{-- Add new files --}}
+                <label class="cursor-pointer px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm text-gray-600 transition inline-flex items-center gap-1.5 active:scale-95">
+                  <i class="fa-solid fa-photo-film"></i> Add Files
+                  <input type="file" name="reference_files[]" accept="image/*,video/*" multiple class="hidden"
+                         @change="newPreviews = [...$event.target.files].map(f => ({ url: URL.createObjectURL(f), type: f.type }))">
+                </label>
+                <div class="flex flex-wrap gap-2 mt-2" x-show="newPreviews.length > 0">
+                  <template x-for="(p, i) in newPreviews" :key="i">
+                    <div class="relative">
+                      <template x-if="p.type.startsWith('image')">
+                        <img :src="p.url" class="w-14 h-14 object-cover rounded-xl border border-blue-300">
+                      </template>
+                      <template x-if="p.type.startsWith('video')">
+                        <div class="w-14 h-14 rounded-xl border border-blue-300 bg-gray-800 flex items-center justify-center">
+                          <i class="fa-solid fa-play text-white text-xs"></i>
+                        </div>
+                      </template>
                     </div>
-                  </template>
-                  <template x-if="removeImg">
-                    <input type="hidden" name="remove_reference_image" value="1">
                   </template>
                 </div>
               </div>

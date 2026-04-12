@@ -288,15 +288,38 @@
           @endif
         </div>
 
-        {{-- Reference photo (if any) --}}
-        @if($task->reference_image)
+        {{-- Reference files (if any) --}}
+        @php $refFiles = $task->referenceFiles ?? collect(); @endphp
+        @if($task->reference_image || $refFiles->count())
           <div x-data="{ expanded: false }" class="bg-amber-50 border-b border-amber-200 flex-shrink-0">
             <div @click="expanded = !expanded" class="px-4 py-2 flex items-center justify-between cursor-pointer">
-              <span class="text-xs font-semibold text-amber-700">📌 Reference Photo</span>
+              <span class="text-xs font-semibold text-amber-700">📌 Reference {{ $refFiles->count() > 1 ? 'Files ('.$refFiles->count().')' : 'Photo' }}</span>
               <svg :class="expanded ? 'rotate-180' : ''" class="w-3 h-3 text-amber-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
             </div>
             <div x-show="expanded" x-transition class="px-4 pb-3">
-              <img src="{{ Storage::url($task->reference_image) }}" class="max-h-48 rounded-xl border border-amber-200 shadow-sm">
+              <div class="flex flex-wrap gap-2">
+                @if($task->reference_image && $refFiles->where('file_path', $task->reference_image)->isEmpty())
+                  <img src="{{ Storage::url($task->reference_image) }}"
+                       data-lightbox-src="{{ Storage::url($task->reference_image) }}"
+                       data-lightbox-sender="Reference Photo"
+                       data-lightbox-time="{{ $task->created_at->format('M d, Y') }}"
+                       @click.stop="$dispatch('open-lightbox', '{{ Storage::url($task->reference_image) }}')"
+                       class="max-h-48 rounded-xl border border-amber-200 shadow-sm cursor-zoom-in hover:opacity-90 transition">
+                @endif
+                @foreach($refFiles as $rf)
+                  @if($rf->isVideo())
+                    <video src="{{ Storage::url($rf->file_path) }}" controls
+                           class="max-h-48 rounded-xl border border-amber-200 shadow-sm"></video>
+                  @else
+                    <img src="{{ Storage::url($rf->file_path) }}"
+                         data-lightbox-src="{{ Storage::url($rf->file_path) }}"
+                         data-lightbox-sender="Reference Photo"
+                         data-lightbox-time="{{ $task->created_at->format('M d, Y') }}"
+                         @click.stop="$dispatch('open-lightbox', '{{ Storage::url($rf->file_path) }}')"
+                         class="max-h-48 rounded-xl border border-amber-200 shadow-sm cursor-zoom-in hover:opacity-90 transition">
+                  @endif
+                @endforeach
+              </div>
             </div>
           </div>
         @endif

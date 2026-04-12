@@ -25,4 +25,9 @@ class ChecklistTask extends Model
     {
         return $this->belongsToMany(User::class, 'checklist_task_users');
     }
+
+    public function referenceFiles(): HasMany
+    {
+        return $this->hasMany(ChecklistTaskFile::class)->orderBy('sort_order');
+    }
 }

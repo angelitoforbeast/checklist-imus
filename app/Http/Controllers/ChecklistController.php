@@ -21,7 +21,7 @@ class ChecklistController extends Controller
         $today = now()->toDateString();
         $user  = Auth::user();
 
-        $tasksQuery = ChecklistTask::with('assignedUsers')
+        $tasksQuery = ChecklistTask::with(['assignedUsers', 'referenceFiles'])
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->orderBy('id');
@@ -83,7 +83,7 @@ class ChecklistController extends Controller
         $today = now()->toDateString();
         $user  = Auth::user();
 
-        $tasks = ChecklistTask::with('assignedUsers')
+        $tasks = ChecklistTask::with(['assignedUsers', 'referenceFiles'])
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->orderBy('id')
@@ -239,7 +239,7 @@ class ChecklistController extends Controller
         $isToday = $dateObj->isToday();
 
         if ($isToday) {
-            $tasks = ChecklistTask::with('assignedUsers')
+            $tasks = ChecklistTask::with(['assignedUsers', 'referenceFiles'])
                 ->where('is_active', true)
                 ->orderBy('sort_order')
                 ->orderBy('id')
@@ -247,7 +247,7 @@ class ChecklistController extends Controller
         } else {
             $endOfDay = $dateObj->copy()->endOfDay();
             $tasks = ChecklistTask::withTrashed()
-                ->with('assignedUsers')
+                ->with(['assignedUsers', 'referenceFiles'])
                 ->whereDate('created_at', '<=', $dateObj->toDateString())
                 ->where(function ($q) use ($endOfDay) {
                     $q->whereNull('deleted_at')
@@ -327,7 +327,7 @@ class ChecklistController extends Controller
 
     public function manage()
     {
-        $allTasks = ChecklistTask::with('assignedUsers')
+        $allTasks = ChecklistTask::with(['assignedUsers', 'referenceFiles'])
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -498,16 +498,19 @@ class ChecklistController extends Controller
     public function storeTask(Request $request)
     {
         $validated = $request->validate([
-            'title'           => 'required|string|max:255',
-            'description'     => 'nullable|string|max:1000',
-            'type'            => 'required|in:photo,note,any,both,photo_note',
-            'ai_prompt'       => 'nullable|string|max:2000',
-            'approval_prompt' => 'nullable|string|max:2000',
-            'task_time'       => 'nullable|date_format:H:i',
-            'frequency'       => 'nullable|in:daily,once',
-            'reference_image' => 'nullable|image',
+            'title'             => 'required|string|max:255',
+            'description'       => 'nullable|string|max:1000',
+            'type'              => 'required|in:photo,note,any,both,photo_note',
+            'ai_prompt'         => 'nullable|string|max:2000',
+            'approval_prompt'   => 'nullable|string|max:2000',
+            'task_time'         => 'nullable|date_format:H:i',
+            'frequency'         => 'nullable|in:daily,once',
+            'reference_image'   => 'nullable|image',
+            'reference_files'   => 'nullable|array',
+            'reference_files.*' => 'file|mimes:jpg,jpeg,png,gif,webp,mp4,mov,avi,mkv,webm,3gp',
         ]);
 
+        // Legacy single reference_image support
         $imagePath = null;
         if ($request->hasFile('reference_image')) {
             $imagePath = $request->file('reference_image')->store('task-references', 'public');
@@ -521,6 +524,18 @@ class ChecklistController extends Controller
             'is_active'  => true,
         ]);
 
+        // Handle multiple reference files
+        if ($request->hasFile('reference_files')) {
+            foreach ($request->file('reference_files') as $i => $file) {
+                $task->referenceFiles()->create([
+                    'file_path'          => $file->store('task-references', 'public'),
+                    'file_original_name' => $file->getClientOriginalName(),
+                    'file_mime'          => $file->getMimeType(),
+                    'sort_order'         => $i,
+                ]);
+            }
+        }
+
         $userIds = array_filter((array) $request->input('assigned_users', []));
         $task->assignedUsers()->sync($userIds);
 
@@ -530,28 +545,52 @@ class ChecklistController extends Controller
     public function updateTask(Request $request, ChecklistTask $task)
     {
         $validated = $request->validate([
-            'title'           => 'required|string|max:255',
-            'description'     => 'nullable|string|max:1000',
-            'type'            => 'required|in:photo,note,any,both,photo_note',
-            'is_active'       => 'boolean',
-            'ai_prompt'       => 'nullable|string|max:2000',
-            'approval_prompt' => 'nullable|string|max:2000',
-            'task_time'       => 'nullable|date_format:H:i',
-            'frequency'       => 'nullable|in:daily,once',
-            'reference_image' => 'nullable|image',
+            'title'             => 'required|string|max:255',
+            'description'       => 'nullable|string|max:1000',
+            'type'              => 'required|in:photo,note,any,both,photo_note',
+            'is_active'         => 'boolean',
+            'ai_prompt'         => 'nullable|string|max:2000',
+            'approval_prompt'   => 'nullable|string|max:2000',
+            'task_time'         => 'nullable|date_format:H:i',
+            'frequency'         => 'nullable|in:daily,once',
+            'reference_image'   => 'nullable|image',
+            'reference_files'   => 'nullable|array',
+            'reference_files.*' => 'file|mimes:jpg,jpeg,png,gif,webp,mp4,mov,avi,mkv,webm,3gp',
         ]);
 
         if ($request->hasFile('reference_image')) {
             if ($task->reference_image) {
-                \Illuminate\Support\Facades\Storage::disk('public')->delete($task->reference_image);
+                Storage::disk('public')->delete($task->reference_image);
             }
             $validated['reference_image'] = $request->file('reference_image')->store('task-references', 'public');
         }
         if ($request->boolean('remove_reference_image')) {
             if ($task->reference_image) {
-                \Illuminate\Support\Facades\Storage::disk('public')->delete($task->reference_image);
+                Storage::disk('public')->delete($task->reference_image);
             }
             $validated['reference_image'] = null;
+        }
+
+        // Handle deleting specific reference files
+        if ($request->input('delete_reference_files')) {
+            $deleteIds = array_filter((array) $request->input('delete_reference_files'));
+            foreach ($task->referenceFiles()->whereIn('id', $deleteIds)->get() as $rf) {
+                Storage::disk('public')->delete($rf->file_path);
+                $rf->delete();
+            }
+        }
+
+        // Handle adding new reference files
+        if ($request->hasFile('reference_files')) {
+            $nextOrder = ($task->referenceFiles()->max('sort_order') ?? -1) + 1;
+            foreach ($request->file('reference_files') as $i => $file) {
+                $task->referenceFiles()->create([
+                    'file_path'          => $file->store('task-references', 'public'),
+                    'file_original_name' => $file->getClientOriginalName(),
+                    'file_mime'          => $file->getMimeType(),
+                    'sort_order'         => $nextOrder + $i,
+                ]);
+            }
         }
 
         $task->update($validated);
