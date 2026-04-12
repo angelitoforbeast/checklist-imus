@@ -45,12 +45,19 @@ class ChecklistController extends Controller
             ->get()
             ->keyBy('checklist_task_id');
 
-        $doneCount  = $submissionsByTask->count();
+        $doneCount  = $submissionsByTask->where('status', 'completed')->count();
         $totalTasks = $tasks->count();
+
+        // Load admin comments for today, grouped by task_id
+        $commentsByTask = \App\Models\ChecklistTaskComment::with('user')
+            ->where('date', $today)
+            ->orderBy('created_at')
+            ->get()
+            ->groupBy('checklist_task_id');
 
         return view('checklist.index', compact(
             'tasks', 'submissionsByTask',
-            'today', 'doneCount', 'totalTasks'
+            'today', 'doneCount', 'totalTasks', 'commentsByTask'
         ));
     }
 
@@ -105,7 +112,7 @@ class ChecklistController extends Controller
             }
         }
 
-        $doneCount  = $submissionsByTask->count();
+        $doneCount  = $submissionsByTask->where('status', 'completed')->count();
         $totalTasks = $tasks->count();
 
         $prevDate = $dateObj->copy()->subDay()->toDateString();
@@ -121,15 +128,22 @@ class ChecklistController extends Controller
                 return empty($assignedIds) || !empty(array_intersect($assignedIds, $roleUserIds));
             })->values();
             // Recalculate counts after filter
-            $doneCount = $tasks->filter(fn($t) => $submissionsByTask->has($t->id))->count();
+            $doneCount = $tasks->filter(fn($t) => $submissionsByTask->has($t->id) && $submissionsByTask->get($t->id)->status === 'completed')->count();
             $totalTasks = $tasks->count();
         }
+
+        // Load admin comments for this date, grouped by task_id
+        $commentsByTask = \App\Models\ChecklistTaskComment::with('user')
+            ->where('date', $dateObj->toDateString())
+            ->orderBy('created_at')
+            ->get()
+            ->groupBy('checklist_task_id');
 
         return view('checklist.report', compact(
             'tasks', 'submissionsByTask',
             'doneCount', 'totalTasks',
             'dateObj', 'prevDate', 'nextDate', 'isToday',
-            'roles', 'roleFilter'
+            'roles', 'roleFilter', 'commentsByTask'
         ));
     }
 
@@ -239,7 +253,9 @@ class ChecklistController extends Controller
     }
 
     /**
-     * Revert a completed submission back to pending (deletes submission + files).
+     * Revert a completed submission back to pending.
+     * Keeps all data (photos, notes, analysis) but sets status to 'pending'.
+     * User must re-submit to mark it completed again.
      * Admin only — accessible from the report page.
      */
     public function revertSubmission(ChecklistSubmission $submission)
@@ -248,24 +264,43 @@ class ChecklistController extends Controller
             abort(403);
         }
 
-        // Delete all uploaded files from storage
-        foreach ($submission->files as $file) {
-            Storage::disk('public')->delete($file->file_path);
-            $file->delete();
+        // Set status to pending (keep all data)
+        $submission->status = 'pending';
+        $submission->save();
+
+        // Log the revert action
+        $submission->logs()->create([
+            'user_id' => Auth::id(),
+            'action' => 'reverted',
+            'notes_snapshot' => $submission->notes,
+            'file_count' => $submission->files->count(),
+        ]);
+
+        return back()->with('success', 'Task reverted to pending. User needs to re-submit.');
+    }
+
+    /**
+     * Admin sends a comment/message on a task (visible in user's Messenger chat view).
+     */
+    public function sendComment(Request $request, ChecklistTask $task)
+    {
+        if (!Auth::user()?->isAdmin()) {
+            abort(403);
         }
-        if ($submission->file_path) {
-            Storage::disk('public')->delete($submission->file_path);
-        }
 
-        // Delete logs
-        $submission->logs()->delete();
-        $submission->analysisLogs()->delete();
-        $submission->approvalLogs()->delete();
+        $request->validate([
+            'message' => 'required|string|max:2000',
+            'date'    => 'required|date',
+        ]);
 
-        // Delete the submission itself
-        $submission->delete();
+        $comment = \App\Models\ChecklistTaskComment::create([
+            'checklist_task_id' => $task->id,
+            'user_id'           => Auth::id(),
+            'date'              => $request->date,
+            'message'           => $request->message,
+        ]);
 
-        return back()->with('success', 'Task reverted to pending.');
+        return back()->with('success', 'Comment sent.');
     }
 
     public function deleteFile(ChecklistSubmissionFile $file)
@@ -549,8 +584,14 @@ class ChecklistController extends Controller
         // Find or create today's submission
         $submission = ChecklistSubmission::firstOrCreate(
             ['checklist_task_id' => $task->id, 'date' => $today],
-            ['user_id' => Auth::id()]
+            ['user_id' => Auth::id(), 'status' => 'completed']
         );
+
+        // If reverted, mark as completed again (resubmit)
+        if ($submission->status === 'pending') {
+            $submission->status = 'completed';
+            $submission->save();
+        }
 
         $file = $request->file('photo');
         $nextOrder = $submission->files()->max('sort_order') + 1;
@@ -598,8 +639,14 @@ class ChecklistController extends Controller
 
         $submission = ChecklistSubmission::firstOrCreate(
             ['checklist_task_id' => $task->id, 'date' => $today],
-            ['user_id' => Auth::id()]
+            ['user_id' => Auth::id(), 'status' => 'completed']
         );
+
+        // If reverted, mark as completed again (resubmit)
+        if ($submission->status === 'pending') {
+            $submission->status = 'completed';
+            $submission->save();
+        }
 
         // Append note (or replace)
         $submission->update(['notes' => $request->notes]);

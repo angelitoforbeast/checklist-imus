@@ -142,8 +142,9 @@
               @foreach($tasks as $task)
                 @php
                   $sub           = $submissionsByTask->get($task->id);
-                  $done          = $sub !== null;
-                  $subFiles      = $done ? $sub->files : collect();
+                  $done          = $sub !== null && $sub->status === 'completed';
+                  $reverted      = $sub !== null && $sub->status === 'pending';
+                  $subFiles      = ($done || $reverted) ? $sub->files : collect();
                   $imageFiles    = $subFiles->filter(fn($f) => $f->isImage());
                   $otherFiles    = $subFiles->filter(fn($f) => !$f->isImage());
                   // Analysis
@@ -290,7 +291,10 @@
 
                     {{-- Status --}}
                     <td class="px-4 py-3 align-middle">
-                      <div class="w-2.5 h-2.5 rounded-full mx-auto {{ $done ? 'bg-green-400' : 'bg-gray-200' }}"></div>
+                      <div class="w-2.5 h-2.5 rounded-full mx-auto {{ $done ? 'bg-green-400' : ($reverted ? 'bg-amber-400' : 'bg-gray-200') }}"></div>
+                      @if($reverted)
+                        <p class="text-[9px] text-amber-500 font-semibold text-center mt-0.5">REVERTED</p>
+                      @endif
                     </td>
 
                     {{-- Task --}}
@@ -419,7 +423,7 @@
                     <td class="px-3 py-3 align-middle">
                       @if($done && Auth::user()->isAdmin())
                         <form method="POST" action="{{ route('checklist.revert-submission', $sub) }}"
-                              onsubmit="return confirm('Revert this task to pending? All photos, notes, and analysis will be deleted.')">
+                              onsubmit="return confirm('Revert this task to pending? Data will be kept but user needs to re-submit.')">
                           @csrf
                           <button type="submit"
                                   class="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition font-medium whitespace-nowrap">
@@ -646,6 +650,45 @@
                             </template>
                           </div>
                         </template>
+                      </td>
+                    </tr>
+                  @endif
+
+                  {{-- Admin Comment/Chat Row --}}
+                  @if(Auth::user()->isAdmin())
+                    <tr class="border-b border-blue-100 bg-blue-50/20">
+                      <td colspan="9" class="px-6 py-3">
+                        {{-- Existing comments --}}
+                        @php $taskComments = $commentsByTask->get($task->id, collect()); @endphp
+                        @if($taskComments->count() > 0)
+                          <div class="space-y-2 mb-3">
+                            <p class="text-xs font-semibold text-blue-500 uppercase tracking-wide">💬 Admin Comments</p>
+                            @foreach($taskComments as $comment)
+                              <div class="flex items-start gap-2">
+                                <div class="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-white text-[10px] font-bold" style="background-color:#1877F2">{{ strtoupper(substr($comment->user->name ?? 'A', 0, 1)) }}</div>
+                                <div>
+                                  <div class="bg-white border border-blue-200 rounded-2xl rounded-tl-md px-3 py-2">
+                                    <p class="text-sm text-gray-800">{{ $comment->message }}</p>
+                                  </div>
+                                  <p class="text-[10px] text-gray-400 mt-0.5 ml-1">{{ $comment->user->name ?? 'Admin' }} · {{ $comment->created_at->format('g:i A') }}</p>
+                                </div>
+                              </div>
+                            @endforeach
+                          </div>
+                        @endif
+                        {{-- Comment input --}}
+                        <form method="POST" action="{{ route('checklist.send-comment', $task) }}" class="flex items-center gap-2">
+                          @csrf
+                          <input type="hidden" name="date" value="{{ $dateObj->toDateString() }}">
+                          <div class="flex-1">
+                            <input type="text" name="message" placeholder="Type a comment for this task..." required
+                                   class="w-full text-sm border border-gray-200 rounded-full px-4 py-2 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 bg-white">
+                          </div>
+                          <button type="submit"
+                                  class="w-8 h-8 rounded-full flex items-center justify-center text-white flex-shrink-0 hover:opacity-90 transition" style="background-color:#1877F2">
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                          </button>
+                        </form>
                       </td>
                     </tr>
                   @endif

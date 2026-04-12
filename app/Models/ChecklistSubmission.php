@@ -11,7 +11,7 @@ class ChecklistSubmission extends Model
 {
     protected $fillable = [
         'checklist_task_id', 'user_id', 'date',
-        'notes', 'file_path', 'file_original_name', 'file_mime',
+        'notes', 'file_path', 'file_original_name', 'file_mime', 'status',
     ];
 
     protected $casts = [

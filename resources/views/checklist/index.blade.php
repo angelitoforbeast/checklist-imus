@@ -63,8 +63,10 @@
 
       @php
         $isAdmin = Auth::user()?->isAdmin();
-        $pendingTasks = $tasks->filter(fn($t) => !$submissionsByTask->has($t->id));
-        $doneTasks    = $tasks->filter(fn($t) => $submissionsByTask->has($t->id));
+        // A task is "done" only if it has a submission with status 'completed'
+        // A task with a reverted submission (status 'pending') should appear in pending list
+        $pendingTasks = $tasks->filter(fn($t) => !$submissionsByTask->has($t->id) || ($submissionsByTask->has($t->id) && $submissionsByTask->get($t->id)->status === 'pending'));
+        $doneTasks    = $tasks->filter(fn($t) => $submissionsByTask->has($t->id) && $submissionsByTask->get($t->id)->status === 'completed');
 
         $allImageUrls = [];
         foreach($tasks as $task) {
@@ -179,6 +181,7 @@
                           <div class="flex gap-2" style="min-width: min-content;">
                             @foreach($imageFiles as $f)
                               <img src="{{ Storage::url($f->file_path) }}"
+                                   data-lightbox-src="{{ Storage::url($f->file_path) }}"
                                    @click="$dispatch('open-lightbox', '{{ Storage::url($f->file_path) }}')"
                                    class="w-20 h-20 flex-shrink-0 object-cover rounded-2xl border border-green-200 shadow-sm cursor-zoom-in active:scale-95 transition-transform">
                             @endforeach
@@ -197,7 +200,7 @@
                         <span>{{ $sub->user->name ?? 'Unknown' }} · {{ $sub->created_at->format('g:i A') }}</span>
                       </div>
                       @if($isMine || $isAdmin)
-                        <button @click="setFocus({{ $task->id }})"
+                        <button @click.stop="focusTask = {{ $task->id }}; document.body.style.overflow = 'hidden';"
                                 class="w-full py-2.5 rounded-2xl font-semibold text-sm transition-all duration-200
                                   bg-white border-2 border-green-300 text-green-700 active:bg-green-50 active:scale-[0.98] mt-1">
                           📸 Add More Photos
@@ -225,12 +228,13 @@
     @foreach($tasks as $task)
       @php
         $sub         = $submissionsByTask->get($task->id);
-        $done        = $sub !== null;
+        $done        = $sub !== null && $sub->status === 'completed';
+        $reverted    = $sub !== null && $sub->status === 'pending';
         $isMine      = $sub && $sub->user_id === Auth::id();
         $assignedIds = $task->assignedUsers->pluck('id')->toArray();
         $isAssigned  = empty($assignedIds) || in_array(Auth::id(), $assignedIds);
-        $canSubmit   = !$done && $isAssigned;
-        $subFiles    = $done ? $sub->files : collect();
+        $canSubmit   = (!$done && $isAssigned) || $reverted;
+        $subFiles    = ($done || $reverted) ? $sub->files : collect();
         $imageFiles  = $subFiles->filter(fn($f) => $f->isImage());
       @endphp
 
@@ -244,7 +248,7 @@
                sendingNote: false,
                noteText: '{{ $sub?->notes ? addslashes($sub->notes) : '' }}',
                sentPhotos: [
-                 @if($done)
+                 @if($done || $reverted)
                    @foreach($imageFiles as $f)
                      { url: '{{ Storage::url($f->file_path) }}', name: '{{ $f->file_original_name }}', time: '{{ $f->created_at->format('g:i A') }}', by: '{{ $sub->user->name ?? 'Unknown' }}' },
                    @endforeach
@@ -350,6 +354,7 @@
                     </button>
                     <div class="overflow-hidden transition-all duration-300" :style="pinExpanded ? 'max-height: 300px' : 'max-height: 60px'">
                       <img src="{{ Storage::url($task->reference_image) }}"
+                           data-lightbox-src="{{ Storage::url($task->reference_image) }}"
                            @click="$dispatch('open-lightbox', '{{ Storage::url($task->reference_image) }}')"
                            class="w-full max-w-[200px] object-cover rounded-xl cursor-zoom-in active:scale-95 transition-transform"
                            :class="pinExpanded ? 'h-auto' : 'h-[60px]'">
@@ -390,6 +395,7 @@
                       <template x-for="(photo, i) in sentPhotos" :key="i">
                         <div class="flex-shrink-0 w-36">
                           <img :src="photo.url"
+                               :data-lightbox-src="photo.url"
                                @click="$dispatch('open-lightbox', photo.url)"
                                class="w-36 h-36 object-cover rounded-2xl shadow-sm cursor-zoom-in active:scale-95 transition-transform"
                                :class="i === sentPhotos.length - 1 ? 'rounded-tr-md' : ''">
@@ -402,6 +408,20 @@
                   </div>
                 </div>
               </template>
+
+              {{-- Admin comments (left side, like received messages from admin) --}}
+              @php $taskComments = $commentsByTask->get($task->id, collect()); @endphp
+              @foreach($taskComments as $comment)
+                <div class="flex items-start gap-2">
+                  <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold" style="background-color:#1877F2">{{ strtoupper(substr($comment->user->name ?? 'A', 0, 1)) }}</div>
+                  <div class="max-w-[75%]">
+                    <div class="bg-gray-200 rounded-2xl rounded-tl-md px-4 py-2.5">
+                      <p class="text-sm text-gray-800">{{ $comment->message }}</p>
+                    </div>
+                    <p class="text-[10px] text-gray-400 mt-1 ml-1">{{ $comment->user->name ?? 'Admin' }} · {{ $comment->created_at->format('g:i A') }}</p>
+                  </div>
+                </div>
+              @endforeach
 
               {{-- Sent notes (right side, blue bubble like Messenger) --}}
               <template x-for="(note, i) in sentNotes" :key="'n'+i">
@@ -506,26 +526,80 @@
 
   </div>
 
-  {{-- ===== LIGHTBOX ===== --}}
+  {{-- ===== LIGHTBOX WITH GALLERY NAVIGATION ===== --}}
   <div x-data="{
            lightbox: false,
-           lightSrc: '',
-           open(src) { this.lightSrc = src; this.lightbox = true; }
+           images: [],
+           currentIndex: 0,
+           touchStartX: 0,
+           touchEndX: 0,
+           get lightSrc() { return this.images[this.currentIndex] ?? ''; },
+           open(src) {
+               // Collect all visible images in the current context
+               const allImgs = Array.from(document.querySelectorAll('[data-lightbox-src]')).map(el => el.dataset.lightboxSrc);
+               // Deduplicate while preserving order
+               this.images = [...new Set(allImgs.length > 0 ? allImgs : [src])];
+               const idx = this.images.indexOf(src);
+               this.currentIndex = idx >= 0 ? idx : 0;
+               this.lightbox = true;
+           },
+           prev() { if (this.currentIndex > 0) this.currentIndex--; },
+           next() { if (this.currentIndex < this.images.length - 1) this.currentIndex++; },
+           handleSwipeStart(e) { this.touchStartX = e.changedTouches[0].screenX; },
+           handleSwipeEnd(e) {
+               this.touchEndX = e.changedTouches[0].screenX;
+               const diff = this.touchStartX - this.touchEndX;
+               if (Math.abs(diff) > 50) {
+                   if (diff > 0) this.next();
+                   else this.prev();
+               }
+           }
        }"
        @open-lightbox.window="open($event.detail)"
        @keydown.escape.window="lightbox = false"
+       @keydown.arrow-left.window="if (lightbox) prev()"
+       @keydown.arrow-right.window="if (lightbox) next()"
        x-show="lightbox"
        x-transition.opacity
        @click="lightbox = false"
        class="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4"
-       style="display:none">
+       style="display:none"
+       @touchstart="handleSwipeStart($event)"
+       @touchend="handleSwipeEnd($event)">
 
+    {{-- Close button --}}
     <button @click="lightbox = false"
             class="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-xl transition z-10">✕</button>
 
+    {{-- Counter --}}
+    <template x-if="images.length > 1">
+      <div class="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-3 py-1 rounded-full z-10"
+           x-text="(currentIndex + 1) + ' / ' + images.length"></div>
+    </template>
+
+    {{-- Prev button --}}
+    <template x-if="images.length > 1">
+      <button @click.stop="prev()"
+              :class="currentIndex === 0 ? 'opacity-20 pointer-events-none' : 'opacity-80 hover:opacity-100'"
+              class="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-2xl transition z-10">‹</button>
+    </template>
+
+    {{-- Image --}}
     <img :src="lightSrc"
-         class="max-w-full max-h-full rounded-2xl shadow-2xl object-contain"
+         class="max-w-full max-h-full rounded-2xl shadow-2xl object-contain transition-all duration-200"
          @click.stop>
+
+    {{-- Next button --}}
+    <template x-if="images.length > 1">
+      <button @click.stop="next()"
+              :class="currentIndex === images.length - 1 ? 'opacity-20 pointer-events-none' : 'opacity-80 hover:opacity-100'"
+              class="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-2xl transition z-10">›</button>
+    </template>
+
+    {{-- Swipe hint --}}
+    <template x-if="images.length > 1">
+      <p class="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/40 text-xs z-10">Swipe or use arrows to navigate</p>
+    </template>
   </div>
 
 </x-layout>
