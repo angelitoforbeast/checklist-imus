@@ -327,21 +327,74 @@
           {{-- Timeline messages --}}
           @foreach($timeline as $item)
             @if($item['type'] === 'photo_batch')
-              {{-- User photos = LEFT side (received by admin) --}}
+              {{-- User photos = LEFT side (received by admin) - Messenger style --}}
               <div class="flex justify-start mb-3">
-                <div class="max-w-[80%]">
+                <div class="max-w-[85%]">
                   <div class="flex items-end gap-2">
-                    <div class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 flex-shrink-0">
+                    <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 flex-shrink-0">
                       {{ strtoupper(substr($item['user']->name ?? '?', 0, 1)) }}
                     </div>
                     <div>
-                      <div class="flex flex-wrap gap-1.5">
-                        @foreach($item['files'] as $file)
-                          <img src="{{ Storage::url($file->file_path) }}"
-                               @click="$dispatch('open-lightbox', '{{ Storage::url($file->file_path) }}')"
-                               class="w-24 h-24 object-cover rounded-xl border border-gray-200 shadow-sm cursor-zoom-in hover:opacity-90 transition">
-                        @endforeach
-                      </div>
+                      @php $batchFiles = $item['files']; $count = $batchFiles->count(); @endphp
+                      @if($count === 1)
+                        {{-- Single photo: large bubble --}}
+                        <div class="rounded-2xl rounded-bl-md overflow-hidden shadow-sm border border-gray-200">
+                          <img src="{{ Storage::url($batchFiles->first()->file_path) }}"
+                               @click="$dispatch('open-lightbox', '{{ Storage::url($batchFiles->first()->file_path) }}')"
+                               class="w-56 h-56 object-cover cursor-zoom-in hover:opacity-90 transition">
+                        </div>
+                      @elseif($count === 2)
+                        {{-- Two photos: side by side --}}
+                        <div class="flex gap-0.5 rounded-2xl rounded-bl-md overflow-hidden shadow-sm border border-gray-200">
+                          @foreach($batchFiles as $file)
+                            <img src="{{ Storage::url($file->file_path) }}"
+                                 @click="$dispatch('open-lightbox', '{{ Storage::url($file->file_path) }}')"
+                                 class="w-32 h-40 object-cover cursor-zoom-in hover:opacity-90 transition">
+                          @endforeach
+                        </div>
+                      @elseif($count === 3)
+                        {{-- Three photos: 1 big + 2 small --}}
+                        <div class="rounded-2xl rounded-bl-md overflow-hidden shadow-sm border border-gray-200">
+                          <img src="{{ Storage::url($batchFiles->values()[0]->file_path) }}"
+                               @click="$dispatch('open-lightbox', '{{ Storage::url($batchFiles->values()[0]->file_path) }}')"
+                               class="w-64 h-36 object-cover cursor-zoom-in hover:opacity-90 transition">
+                          <div class="flex gap-0.5 mt-0.5">
+                            @foreach($batchFiles->values()->slice(1) as $file)
+                              <img src="{{ Storage::url($file->file_path) }}"
+                                   @click="$dispatch('open-lightbox', '{{ Storage::url($file->file_path) }}')"
+                                   class="flex-1 h-28 object-cover cursor-zoom-in hover:opacity-90 transition">
+                            @endforeach
+                          </div>
+                        </div>
+                      @else
+                        {{-- 4+ photos: 2-column grid --}}
+                        <div class="rounded-2xl rounded-bl-md overflow-hidden shadow-sm border border-gray-200">
+                          <div class="grid grid-cols-2 gap-0.5">
+                            @foreach($batchFiles->take(4) as $idx => $file)
+                              <div class="relative">
+                                <img src="{{ Storage::url($file->file_path) }}"
+                                     @click="$dispatch('open-lightbox', '{{ Storage::url($file->file_path) }}')"
+                                     class="w-full h-32 object-cover cursor-zoom-in hover:opacity-90 transition">
+                                @if($idx === 3 && $count > 4)
+                                  <div @click="$dispatch('open-lightbox', '{{ Storage::url($file->file_path) }}')"
+                                       class="absolute inset-0 bg-black/50 flex items-center justify-center cursor-zoom-in">
+                                    <span class="text-white text-lg font-bold">+{{ $count - 4 }}</span>
+                                  </div>
+                                @endif
+                              </div>
+                            @endforeach
+                          </div>
+                          @if($count > 4)
+                            <div class="grid grid-cols-3 gap-0.5 mt-0.5">
+                              @foreach($batchFiles->slice(4) as $file)
+                                <img src="{{ Storage::url($file->file_path) }}"
+                                     @click="$dispatch('open-lightbox', '{{ Storage::url($file->file_path) }}')"
+                                     class="w-full h-24 object-cover cursor-zoom-in hover:opacity-90 transition">
+                              @endforeach
+                            </div>
+                          @endif
+                        </div>
+                      @endif
                       <p class="text-[10px] text-gray-400 mt-1 ml-1">{{ $item['user']->name ?? 'User' }} · {{ $item['time']->format('g:i A') }}</p>
                     </div>
                   </div>
