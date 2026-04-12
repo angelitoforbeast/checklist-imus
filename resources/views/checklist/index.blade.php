@@ -2,6 +2,8 @@
   <x-slot name="heading">Daily Checklist</x-slot>
   <x-slot name="title">Daily Checklist</x-slot>
 
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+
   {{-- Alpine.js global state for focus mode --}}
   <div x-data="{
          focusTask: null,
@@ -22,7 +24,6 @@
             <p class="text-xs text-gray-400">{{ now()->format('l, F j, Y') }}</p>
           </div>
           <div class="flex items-center gap-3">
-            {{-- Progress Ring --}}
             <div class="flex items-center gap-2">
               <div class="relative w-10 h-10">
                 <svg class="w-10 h-10 -rotate-90" viewBox="0 0 36 36">
@@ -112,7 +113,6 @@
               </div>
             </div>
 
-            {{-- Upload Photo Button --}}
             @if($isAssigned)
               <div class="px-5 pb-4">
                 <button @click="setFocus({{ $task->id }})"
@@ -120,7 +120,6 @@
                           text-white active:scale-[0.98] shadow-lg" style="background-color:#1877F2; box-shadow: 0 10px 15px -3px rgba(24,119,242,0.3)">
                   📸 Upload Photo
                 </button>
-
               </div>
             @endif
           </div>
@@ -152,7 +151,6 @@
 
                 <div x-data="{ expanded: false }"
                      class="rounded-3xl shadow-sm overflow-hidden bg-green-50 border-2 border-green-200">
-                  {{-- Collapsed header --}}
                   <button @click="expanded = !expanded" class="w-full px-5 py-3 text-left">
                     <div class="flex items-center justify-between gap-3">
                       <div class="flex items-center gap-2.5 flex-1 min-w-0">
@@ -174,10 +172,8 @@
                     </div>
                   </button>
 
-                  {{-- Expanded details --}}
                   <div x-show="expanded" x-collapse>
                     <div class="px-5 pb-4 space-y-2 border-t border-green-200 pt-3">
-                      {{-- Photos --}}
                       @if($imageFiles->count() > 0)
                         <div class="flex flex-wrap gap-2">
                           @foreach($imageFiles as $f)
@@ -187,25 +183,22 @@
                           @endforeach
                         </div>
                       @endif
-                      {{-- Notes --}}
                       @if($sub->notes)
                         <div class="bg-white/60 rounded-xl px-3 py-2">
                           <p class="text-sm text-gray-600 leading-relaxed">{{ $sub->notes }}</p>
                         </div>
                       @endif
-                      {{-- Submitted info --}}
                       <div class="flex items-center gap-2 text-xs text-gray-400">
                         <div class="w-5 h-5 rounded-full bg-green-200 flex items-center justify-center text-xs font-bold text-green-700 flex-shrink-0">
                           {{ strtoupper(substr($sub->user->name ?? '?', 0, 1)) }}
                         </div>
                         <span>{{ $sub->user->name ?? 'Unknown' }} · {{ $sub->created_at->format('g:i A') }}</span>
                       </div>
-                      {{-- Edit button --}}
                       @if($isMine || $isAdmin)
                         <button @click="setFocus({{ $task->id }})"
                                 class="w-full py-2.5 rounded-2xl font-semibold text-sm transition-all duration-200
                                   bg-white border-2 border-green-300 text-green-700 active:bg-green-50 active:scale-[0.98] mt-1">
-                          ✏️ Edit Submission
+                          📸 Add More Photos
                         </button>
                       @endif
                     </div>
@@ -216,7 +209,6 @@
           </div>
         @endif
 
-        {{-- All done message --}}
         @if($doneCount === $totalTasks && $totalTasks > 0 && $pendingTasks->count() === 0)
           <div class="bg-green-100 border-2 border-green-300 rounded-3xl px-6 py-5 text-center">
             <p class="text-3xl mb-2">🎉</p>
@@ -227,7 +219,7 @@
       @endif
     </div>
 
-    {{-- ===== FULL-SCREEN FOCUS MODE (per task) ===== --}}
+    {{-- ===== FULL-SCREEN MESSENGER-STYLE FOCUS MODE (per task) ===== --}}
     @foreach($tasks as $task)
       @php
         $sub         = $submissionsByTask->get($task->id);
@@ -243,208 +235,237 @@
       @if($canSubmit || ($done && ($isMine || $isAdmin)))
         <div x-show="focusTask === {{ $task->id }}"
              x-transition.opacity.duration.200ms
-             class="fixed inset-0 z-50 bg-gray-100 overflow-y-auto"
+             class="fixed inset-0 z-50 flex flex-col bg-white"
              style="display:none"
              x-data="{
-               queue: [],
-               submitting: false,
-               addFiles(fileList) {
-                 for (const f of fileList) {
-                   this.queue.push({
-                     name: f.name,
-                     url: f.type.startsWith('image/') ? URL.createObjectURL(f) : '',
-                     file: f,
-                     isImg: f.type.startsWith('image/')
-                   });
+               uploading: false,
+               sendingNote: false,
+               noteText: '{{ $sub?->notes ? addslashes($sub->notes) : '' }}',
+               sentPhotos: [
+                 @if($done)
+                   @foreach($imageFiles as $f)
+                     { url: '{{ Storage::url($f->file_path) }}', name: '{{ $f->file_original_name }}', time: '{{ $f->created_at->format('g:i A') }}', by: '{{ $sub->user->name ?? 'Unknown' }}' },
+                   @endforeach
+                 @endif
+               ],
+               sentNotes: [
+                 @if($sub?->notes)
+                   { text: {{ json_encode($sub->notes) }}, time: '{{ $sub->updated_at->format('g:i A') }}', by: '{{ $sub->user->name ?? 'Unknown' }}' },
+                 @endif
+               ],
+               async autoUpload(fileList) {
+                 if (this.uploading) return;
+                 for (const file of fileList) {
+                   if (!file.type.startsWith('image/')) continue;
+                   this.uploading = true;
+                   const fd = new FormData();
+                   fd.append('photo', file);
+                   fd.append('_token', document.querySelector('meta[name=csrf-token]').content);
+                   try {
+                     const res = await fetch('{{ route('checklist.upload-photo', $task) }}', {
+                       method: 'POST',
+                       body: fd,
+                       headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                     });
+                     const data = await res.json();
+                     if (data.success) {
+                       this.sentPhotos.push({ url: data.url, name: data.name, time: data.uploaded_at, by: data.uploaded_by });
+                       this.$nextTick(() => {
+                         const chatArea = this.$refs.chatArea{{ $task->id }};
+                         if (chatArea) chatArea.scrollTop = chatArea.scrollHeight;
+                       });
+                     } else {
+                       alert(data.error || 'Upload failed');
+                     }
+                   } catch(e) {
+                     alert('Upload failed. Check your connection.');
+                   }
+                   this.uploading = false;
                  }
                },
-               removeQueued(i) {
-                 if (this.queue[i].url) URL.revokeObjectURL(this.queue[i].url);
-                 this.queue.splice(i, 1);
-               },
-               submitForm(e) {
-                 if (this.submitting) return false;
-                 if (this.queue.length === 0) return true;
-                 e.preventDefault();
-                 this.submitting = true;
-                 const form = e.target;
-                 const fd = new FormData(form);
-                 fd.delete('files[]');
-                 this.queue.forEach(q => fd.append('files[]', q.file, q.name));
-                 fetch(form.action, {
-                   method: 'POST',
-                   body: fd,
-                   headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' }
-                 }).then(r => { window.location.reload(); }).catch(err => { this.submitting = false; form.submit(); });
+               async sendNote() {
+                 if (this.sendingNote || !this.noteText.trim()) return;
+                 this.sendingNote = true;
+                 const fd = new FormData();
+                 fd.append('notes', this.noteText.trim());
+                 fd.append('_token', document.querySelector('meta[name=csrf-token]').content);
+                 try {
+                   const res = await fetch('{{ route('checklist.send-note', $task) }}', {
+                     method: 'POST',
+                     body: fd,
+                     headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                   });
+                   const data = await res.json();
+                   if (data.success) {
+                     this.sentNotes = [{ text: data.notes, time: data.sent_at, by: data.sent_by }];
+                     this.noteText = '';
+                     this.$nextTick(() => {
+                       const chatArea = this.$refs.chatArea{{ $task->id }};
+                       if (chatArea) chatArea.scrollTop = chatArea.scrollHeight;
+                     });
+                   } else {
+                     alert(data.error || 'Failed to send note');
+                   }
+                 } catch(e) {
+                   alert('Failed to send. Check your connection.');
+                 }
+                 this.sendingNote = false;
                }
              }">
 
-          {{-- Focus Mode Header --}}
-          <div class="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-            <div class="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
-              <button @click="clearFocus(); queue = [];"
-                      class="flex items-center gap-2 text-gray-500 font-semibold text-sm active:text-gray-700">
+          {{-- ===== MESSENGER HEADER ===== --}}
+          <div class="flex-shrink-0 border-b border-gray-200 shadow-sm" style="background-color:#1877F2">
+            <div class="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
+              <button @click="clearFocus()"
+                      class="flex items-center justify-center w-8 h-8 rounded-full bg-white/20 text-white active:bg-white/30 transition">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
-                Back
               </button>
-              <h1 class="text-base font-bold text-gray-800 truncate max-w-[60%] text-center">{{ $task->title }}</h1>
-              <div class="w-14"></div>{{-- spacer for centering --}}
-            </div>
-          </div>
-
-          <div class="max-w-lg mx-auto px-4 py-5">
-            {{-- Task Info Card --}}
-            <div class="bg-white rounded-3xl shadow-sm p-5 mb-4 border-2 {{ $done ? 'border-green-200' : 'border-blue-300' }}">
-              <div class="flex items-center gap-3">
-                @if($done)
-                  <div class="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                  </div>
-                @else
-                  <div class="w-10 h-10 rounded-full border-2 border-blue-400 bg-blue-50 flex items-center justify-center flex-shrink-0">
-                    <div class="w-3 h-3 rounded-full bg-blue-500"></div>
-                  </div>
-                @endif
-                <div class="flex-1">
-                  <h2 class="text-lg font-bold text-gray-800">{{ $task->title }}</h2>
-                  <div class="flex items-center gap-2 mt-0.5">
-                    @if($task->task_time)
-                      <span class="text-xs font-semibold text-blue-600">🕐 {{ \Carbon\Carbon::parse($task->task_time)->format('g:i A') }}</span>
-                    @endif
-                    <span class="text-xs font-bold {{ $done ? 'text-green-600' : 'text-blue-700' }}">
-                      {{ $done ? '✅ DONE' : '📋 PENDING' }}
-                    </span>
-                  </div>
+              <div class="flex-1 min-w-0">
+                <h1 class="text-white font-bold text-base truncate">{{ $task->title }}</h1>
+                <div class="flex items-center gap-2">
+                  @if($task->task_time)
+                    <span class="text-white/70 text-xs">🕐 {{ \Carbon\Carbon::parse($task->task_time)->format('g:i A') }}</span>
+                  @endif
+                  <span class="text-xs font-semibold" :class="sentPhotos.length > 0 ? 'text-green-300' : 'text-white/70'"
+                        x-text="sentPhotos.length > 0 ? '✅ ' + sentPhotos.length + ' photo' + (sentPhotos.length > 1 ? 's' : '') + ' sent' : '⏳ Pending'">
+                  </span>
                 </div>
               </div>
             </div>
-
-            {{-- Submission Form --}}
-            <form method="POST" action="{{ route('checklist.submit', $task) }}" enctype="multipart/form-data"
-                  class="space-y-4" @submit="submitForm($event)">
-              @csrf
-
-              {{-- PHOTO UPLOAD AREA --}}
-              @if(in_array($task->type, ['photo', 'any', 'both', 'photo_note']))
-                <div class="bg-white rounded-3xl shadow-sm p-5">
-                  <label class="block text-sm font-bold text-gray-700 mb-3">
-                    📸 Photos
-                    @if(in_array($task->type, ['photo', 'both', 'photo_note']))
-                      <span class="text-red-500">*</span>
-                    @endif
-                  </label>
-
-                  {{-- Existing photos (edit mode) --}}
-                  @if($done && $imageFiles->count() > 0)
-                    <div class="flex flex-wrap gap-2 mb-4">
-                      @foreach($imageFiles as $f)
-                        <div class="relative">
-                          <img src="{{ Storage::url($f->file_path) }}" class="w-24 h-24 object-cover rounded-2xl border border-gray-200 shadow-sm">
-                          @if($isMine || $isAdmin)
-                            <form method="POST" action="{{ route('checklist.delete-file', $f) }}" onsubmit="return confirm('Remove this photo?')" class="absolute -top-2 -right-2">
-                              @csrf @method('DELETE')
-                              <button type="submit" class="w-7 h-7 bg-red-500 text-white rounded-full text-xs flex items-center justify-center shadow-lg font-bold">✕</button>
-                            </form>
-                          @endif
-                        </div>
-                      @endforeach
-                    </div>
-                  @endif
-
-                  {{-- New photo queue --}}
-                  <template x-if="queue.length > 0">
-                    <div class="flex flex-wrap gap-2 mb-4">
-                      <template x-for="(item, i) in queue" :key="i">
-                        <div class="relative">
-                          <template x-if="item.isImg">
-                            <img :src="item.url" class="w-24 h-24 object-cover rounded-2xl border-2 border-blue-200 shadow-sm">
-                          </template>
-                          <template x-if="!item.isImg">
-                            <div class="w-24 h-24 flex flex-col items-center justify-center rounded-2xl border-2 border-blue-200 bg-blue-50 text-xs text-blue-500">
-                              <span class="text-2xl">📎</span>
-                              <span class="truncate w-full text-center px-1" x-text="item.name.split('.').pop().toUpperCase()"></span>
-                            </div>
-                          </template>
-                          <button type="button" @click.stop="removeQueued(i)"
-                                  class="absolute -top-2 -right-2 w-7 h-7 bg-red-500 text-white rounded-full text-xs flex items-center justify-center shadow-lg font-bold">✕</button>
-                        </div>
-                      </template>
-                    </div>
-                  </template>
-
-                  {{-- Camera & Gallery Buttons --}}
-                  <div class="grid grid-cols-2 gap-3">
-                    <button type="button" @click="$refs.focusCam{{ $task->id }}.click()"
-                            class="py-5 rounded-2xl border-2 border-dashed border-blue-300 bg-blue-50 text-center active:bg-blue-100 active:scale-[0.97] transition-all">
-                      <p class="text-4xl">📷</p>
-                      <p class="text-xs font-bold text-blue-600 mt-1">Take Photo</p>
-                    </button>
-                    <button type="button" @click="$refs.focusGal{{ $task->id }}.click()"
-                            class="py-5 rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/50 text-center active:bg-blue-100 active:scale-[0.97] transition-all">
-                      <p class="text-4xl">🖼️</p>
-                      <p class="text-xs font-bold text-blue-500 mt-1">From Gallery</p>
-                    </button>
-                  </div>
-
-                  {{-- Hidden file inputs --}}
-                  <input type="file" x-ref="focusCam{{ $task->id }}" name="files[]" class="hidden"
-                         accept="image/*" capture="environment"
-                         @change="addFiles($event.target.files); $event.target.value='';">
-                  <input type="file" x-ref="focusGal{{ $task->id }}" name="files[]" class="hidden"
-                         multiple accept="image/*"
-                         @change="addFiles($event.target.files); $event.target.value='';">
-                </div>
-              @endif
-
-              {{-- NOTES --}}
-              @if(in_array($task->type, ['note', 'any', 'both', 'photo_note']))
-                <div class="bg-white rounded-3xl shadow-sm p-5">
-                  <label class="block text-sm font-bold text-gray-700 mb-2">
-                    📝 Notes
-                    @if($task->type === 'both')
-                      <span class="text-red-500">*</span>
-                    @else
-                      <span class="text-gray-400 font-normal text-xs">(optional)</span>
-                    @endif
-                  </label>
-                  <textarea name="notes" rows="3" placeholder="Add notes or remarks..."
-                            class="w-full border-2 border-gray-200 rounded-2xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300 bg-white">{{ $sub?->notes }}</textarea>
-                </div>
-              @endif
-
-              {{-- SUBMIT BUTTON --}}
-              <button type="submit"
-                      :disabled="submitting"
-                      :class="submitting ? 'bg-gray-400 shadow-gray-200' : 'bg-green-500 active:bg-green-600 active:scale-[0.98] shadow-green-200'"
-                      class="w-full py-4 rounded-2xl font-bold text-lg transition-all duration-200 text-white shadow-lg">
-                <span x-show="!submitting">✅ {{ $sub ? 'Update Submission' : 'Submit' }}</span>
-                <span x-show="submitting" class="flex items-center justify-center gap-2">
-                  <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                  </svg>
-                  Submitting...
-                </span>
-              </button>
-
-              {{-- CANCEL --}}
-              <button type="button" @click="clearFocus(); queue = [];"
-                      class="w-full py-3 rounded-2xl text-sm text-gray-500 bg-white border-2 border-gray-200 font-semibold active:bg-gray-50 active:scale-[0.98] transition-all">
-                ❌ Cancel
-              </button>
-
-              {{-- Delete submission (edit mode) --}}
-              @if($done && ($isMine || $isAdmin))
-                <div class="text-center pt-2">
-                  <form method="POST" action="{{ route('checklist.delete-submission', $sub) }}"
-                        onsubmit="return confirm('Remove entire submission?')">
-                    @csrf @method('DELETE')
-                    <button type="submit" class="text-xs text-red-400 hover:text-red-600 underline">Remove submission</button>
-                  </form>
-                </div>
-              @endif
-            </form>
           </div>
+
+          {{-- ===== CHAT AREA ===== --}}
+          <div class="flex-1 overflow-y-auto bg-gray-50" x-ref="chatArea{{ $task->id }}">
+            <div class="max-w-lg mx-auto px-4 py-4 space-y-4">
+
+              {{-- Task instruction bubble (received message, left side) --}}
+              <div class="flex items-start gap-2">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white text-sm font-bold" style="background-color:#1877F2">📋</div>
+                <div>
+                  <div class="bg-gray-200 rounded-2xl rounded-tl-md px-4 py-2.5">
+                    <p class="text-sm text-gray-800 font-medium">{{ $task->title }}</p>
+                    @if(in_array($task->type, ['photo', 'photo_note', 'both']))
+                      <p class="text-xs text-gray-500 mt-1">📸 Please send photo proof</p>
+                    @endif
+                    @if(in_array($task->type, ['note', 'both']))
+                      <p class="text-xs text-gray-500 mt-0.5">📝 Notes required</p>
+                    @endif
+                  </div>
+                  <p class="text-[10px] text-gray-400 mt-1 ml-1">Task assigned</p>
+                </div>
+              </div>
+
+              {{-- Sent photos (right side, like Messenger sent messages) --}}
+              <template x-for="(photo, i) in sentPhotos" :key="i">
+                <div class="flex justify-end">
+                  <div class="max-w-[75%]">
+                    <img :src="photo.url"
+                         @click="$dispatch('open-lightbox', photo.url)"
+                         class="w-48 h-48 object-cover rounded-2xl rounded-tr-md shadow-sm cursor-zoom-in active:scale-95 transition-transform">
+                    <p class="text-[10px] text-gray-400 text-right mt-1 mr-1">
+                      <span x-text="photo.by"></span> · <span x-text="photo.time"></span>
+                    </p>
+                  </div>
+                </div>
+              </template>
+
+              {{-- Sent notes (right side, blue bubble like Messenger) --}}
+              <template x-for="(note, i) in sentNotes" :key="'n'+i">
+                <div class="flex justify-end">
+                  <div class="max-w-[75%]">
+                    <div class="rounded-2xl rounded-tr-md px-4 py-2.5 text-white text-sm" style="background-color:#1877F2">
+                      <span x-text="note.text"></span>
+                    </div>
+                    <p class="text-[10px] text-gray-400 text-right mt-1 mr-1">
+                      <span x-text="note.by"></span> · <span x-text="note.time"></span>
+                    </p>
+                  </div>
+                </div>
+              </template>
+
+              {{-- Uploading indicator --}}
+              <template x-if="uploading">
+                <div class="flex justify-end">
+                  <div class="max-w-[75%]">
+                    <div class="w-48 h-48 rounded-2xl rounded-tr-md bg-gray-200 flex flex-col items-center justify-center animate-pulse">
+                      <svg class="animate-spin h-8 w-8 text-blue-500 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                      </svg>
+                      <p class="text-xs text-gray-500 font-medium">Sending...</p>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
+            </div>
+          </div>
+
+          {{-- ===== MESSENGER BOTTOM BAR ===== --}}
+          <div class="flex-shrink-0 border-t border-gray-200 bg-white" style="padding-bottom: env(safe-area-inset-bottom, 0px);">
+            <div class="max-w-lg mx-auto px-3 py-2">
+              <div class="flex items-end gap-2">
+
+                {{-- Camera button --}}
+                @if(in_array($task->type, ['photo', 'any', 'both', 'photo_note']))
+                  <button type="button" @click="$refs.msgCam{{ $task->id }}.click()"
+                          :disabled="uploading"
+                          class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center active:bg-blue-50 transition"
+                          :style="uploading ? 'color:#9ca3af' : 'color:#1877F2'">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 15.2a3.2 3.2 0 100-6.4 3.2 3.2 0 000 6.4z"/><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>
+                  </button>
+
+                  {{-- Gallery button --}}
+                  <button type="button" @click="$refs.msgGal{{ $task->id }}.click()"
+                          :disabled="uploading"
+                          class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center active:bg-blue-50 transition"
+                          :style="uploading ? 'color:#9ca3af' : 'color:#1877F2'">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                  </button>
+
+                  {{-- Hidden file inputs with auto-upload --}}
+                  <input type="file" x-ref="msgCam{{ $task->id }}" class="hidden"
+                         accept="image/*" capture="environment"
+                         @change="autoUpload($event.target.files); $event.target.value='';">
+                  <input type="file" x-ref="msgGal{{ $task->id }}" class="hidden"
+                         multiple accept="image/*"
+                         @change="autoUpload($event.target.files); $event.target.value='';">
+                @endif
+
+                {{-- Text input (Messenger Aa style) --}}
+                @if(in_array($task->type, ['note', 'any', 'both', 'photo_note']))
+                  <div class="flex-1 relative">
+                    <input type="text" x-model="noteText"
+                           @keydown.enter.prevent="sendNote()"
+                           placeholder="Aa"
+                           class="w-full bg-gray-100 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 border-0 placeholder-gray-400">
+                  </div>
+                @else
+                  <div class="flex-1"></div>
+                @endif
+
+                {{-- Send button (for notes) --}}
+                <button type="button"
+                        @click="sendNote()"
+                        :disabled="sendingNote || !noteText.trim()"
+                        class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-white active:scale-90 transition-all"
+                        :class="sendingNote || !noteText.trim() ? 'bg-gray-300' : ''"
+                        :style="sendingNote || !noteText.trim() ? '' : 'background-color:#1877F2'">
+                  <template x-if="!sendingNote">
+                    <svg class="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                  </template>
+                  <template x-if="sendingNote">
+                    <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                  </template>
+                </button>
+
+              </div>
+            </div>
+          </div>
+
         </div>
       @endif
     @endforeach
@@ -454,21 +475,11 @@
   {{-- ===== LIGHTBOX ===== --}}
   <div x-data="{
            lightbox: false,
-           images: {{ json_encode($allImageUrls ?? []) }},
-           currentIndex: 0,
-           get lightSrc() { return this.images[this.currentIndex] ?? ''; },
-           open(src) {
-               const idx = this.images.indexOf(src);
-               this.currentIndex = idx >= 0 ? idx : 0;
-               this.lightbox = true;
-           },
-           prev() { if (this.currentIndex > 0) this.currentIndex--; },
-           next() { if (this.currentIndex < this.images.length - 1) this.currentIndex++; }
+           lightSrc: '',
+           open(src) { this.lightSrc = src; this.lightbox = true; }
        }"
        @open-lightbox.window="open($event.detail)"
        @keydown.escape.window="lightbox = false"
-       @keydown.arrow-left.window="if (lightbox) prev()"
-       @keydown.arrow-right.window="if (lightbox) next()"
        x-show="lightbox"
        x-transition.opacity
        @click="lightbox = false"
@@ -478,30 +489,9 @@
     <button @click="lightbox = false"
             class="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-xl transition z-10">✕</button>
 
-    <template x-if="images.length > 1">
-      <div class="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white text-sm px-4 py-1.5 rounded-full z-10"
-           x-text="(currentIndex + 1) + ' / ' + images.length"></div>
-    </template>
-
-    <template x-if="images.length > 1">
-      <button @click.stop="prev()"
-              :class="currentIndex === 0 ? 'opacity-20 pointer-events-none' : 'opacity-80 hover:opacity-100'"
-              class="absolute left-3 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-2xl transition z-10">
-        ‹
-      </button>
-    </template>
-
     <img :src="lightSrc"
          class="max-w-full max-h-full rounded-2xl shadow-2xl object-contain"
          @click.stop>
-
-    <template x-if="images.length > 1">
-      <button @click.stop="next()"
-              :class="currentIndex === images.length - 1 ? 'opacity-20 pointer-events-none' : 'opacity-80 hover:opacity-100'"
-              class="absolute right-3 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-2xl transition z-10">
-        ›
-      </button>
-    </template>
   </div>
 
 </x-layout>

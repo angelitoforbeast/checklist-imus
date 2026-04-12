@@ -464,4 +464,93 @@ class ChecklistController extends Controller
 
         return response()->json(['logs' => $logs]);
     }
+    /**
+     * AJAX: Upload a single photo instantly (auto-send).
+     */
+    public function uploadPhoto(Request $request, ChecklistTask $task)
+    {
+        $today = now()->toDateString();
+        $assignedIds = $task->assignedUsers()->pluck('users.id')->toArray();
+        if (!empty($assignedIds) && !in_array(Auth::id(), $assignedIds)) {
+            return response()->json(['error' => 'Not assigned.'], 403);
+        }
+
+        $request->validate([
+            'photo' => 'required|file|max:10240|mimes:jpg,jpeg,png,gif,webp',
+        ]);
+
+        // Find or create today's submission
+        $submission = ChecklistSubmission::firstOrCreate(
+            ['checklist_task_id' => $task->id, 'date' => $today],
+            ['user_id' => Auth::id()]
+        );
+
+        $file = $request->file('photo');
+        $nextOrder = $submission->files()->max('sort_order') + 1;
+
+        $fileRecord = $submission->files()->create([
+            'file_path'          => $file->store("checklist/{$today}", 'public'),
+            'file_original_name' => $file->getClientOriginalName(),
+            'file_mime'          => $file->getMimeType(),
+            'sort_order'         => $nextOrder,
+        ]);
+
+        ChecklistSubmissionLog::create([
+            'checklist_submission_id' => $submission->id,
+            'user_id'                 => Auth::id(),
+            'action'                  => 'photo_uploaded',
+            'notes_snapshot'          => null,
+            'file_count'              => 1,
+            'created_at'              => now(),
+        ]);
+
+        return response()->json([
+            'success'    => true,
+            'file_id'    => $fileRecord->id,
+            'url'        => Storage::url($fileRecord->file_path),
+            'name'       => $fileRecord->file_original_name,
+            'uploaded_by' => Auth::user()->name,
+            'uploaded_at' => now()->format('g:i A'),
+        ]);
+    }
+
+    /**
+     * AJAX: Send a text note/remark for a task.
+     */
+    public function sendNote(Request $request, ChecklistTask $task)
+    {
+        $today = now()->toDateString();
+        $assignedIds = $task->assignedUsers()->pluck('users.id')->toArray();
+        if (!empty($assignedIds) && !in_array(Auth::id(), $assignedIds)) {
+            return response()->json(['error' => 'Not assigned.'], 403);
+        }
+
+        $request->validate([
+            'notes' => 'required|string|max:2000',
+        ]);
+
+        $submission = ChecklistSubmission::firstOrCreate(
+            ['checklist_task_id' => $task->id, 'date' => $today],
+            ['user_id' => Auth::id()]
+        );
+
+        // Append note (or replace)
+        $submission->update(['notes' => $request->notes]);
+
+        ChecklistSubmissionLog::create([
+            'checklist_submission_id' => $submission->id,
+            'user_id'                 => Auth::id(),
+            'action'                  => 'note_sent',
+            'notes_snapshot'          => \Str::limit($request->notes, 200),
+            'file_count'              => 0,
+            'created_at'              => now(),
+        ]);
+
+        return response()->json([
+            'success'  => true,
+            'notes'    => $request->notes,
+            'sent_by'  => Auth::user()->name,
+            'sent_at'  => now()->format('g:i A'),
+        ]);
+    }
 }
