@@ -245,10 +245,17 @@ class ChecklistController extends Controller
             'ai_prompt'       => 'nullable|string|max:2000',
             'approval_prompt' => 'nullable|string|max:2000',
             'task_time'       => 'nullable|date_format:H:i',
+            'reference_image' => 'nullable|image|max:5120',
         ]);
+
+        $imagePath = null;
+        if ($request->hasFile('reference_image')) {
+            $imagePath = $request->file('reference_image')->store('task-references', 'public');
+        }
 
         $task = ChecklistTask::create([
             ...$validated,
+            'reference_image' => $imagePath,
             'sort_order' => (ChecklistTask::max('sort_order') ?? 0) + 1,
             'is_active'  => true,
         ]);
@@ -269,7 +276,21 @@ class ChecklistController extends Controller
             'ai_prompt'       => 'nullable|string|max:2000',
             'approval_prompt' => 'nullable|string|max:2000',
             'task_time'       => 'nullable|date_format:H:i',
+            'reference_image' => 'nullable|image|max:5120',
         ]);
+
+        if ($request->hasFile('reference_image')) {
+            if ($task->reference_image) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($task->reference_image);
+            }
+            $validated['reference_image'] = $request->file('reference_image')->store('task-references', 'public');
+        }
+        if ($request->boolean('remove_reference_image')) {
+            if ($task->reference_image) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($task->reference_image);
+            }
+            $validated['reference_image'] = null;
+        }
 
         $task->update($validated);
 

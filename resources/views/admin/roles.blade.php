@@ -104,6 +104,7 @@
           {{-- Add User Form --}}
           <form method="POST" action="{{ route('admin.store-user') }}" class="mb-4 p-3 bg-gray-50 rounded-xl space-y-2">
             <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Add New User</h3>
+            @csrf
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input type="text" name="name" placeholder="Full name" required
                      class="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">

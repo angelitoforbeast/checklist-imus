@@ -43,7 +43,7 @@
     <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-4 space-y-3">
       <h2 class="font-semibold text-gray-800 text-sm">Add New Task</h2>
 
-      <form method="POST" action="{{ route('checklist.store-task') }}" class="space-y-3">
+      <form method="POST" action="{{ route('checklist.store-task') }}" class="space-y-3" enctype="multipart/form-data">
         @csrf
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <input type="text" name="title" placeholder="Task title..." required
@@ -129,6 +129,21 @@
           </div>
         </div>
 
+        {{-- Reference Image --}}
+        <div x-data="{ preview: null }">
+          <label class="text-xs text-gray-500 mb-1 block">Reference Photo <span class="text-gray-400">(optional — shown to user as guide)</span>:</label>
+          <div class="flex items-center gap-3">
+            <label class="cursor-pointer px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm text-gray-600 transition inline-flex items-center gap-1.5">
+              📷 Choose Photo
+              <input type="file" name="reference_image" accept="image/*" class="hidden"
+                     @change="if($event.target.files[0]) { preview = URL.createObjectURL($event.target.files[0]) }">
+            </label>
+            <template x-if="preview">
+              <img :src="preview" class="w-16 h-16 object-cover rounded-lg border border-gray-200">
+            </template>
+          </div>
+        </div>
+
         <button type="submit"
                 class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 font-medium">
           + Add Task
@@ -188,6 +203,11 @@
               @if($t->approval_prompt)
                 <p class="text-xs text-emerald-500 mt-0.5 italic truncate max-w-sm" title="{{ $t->approval_prompt }}">☑ {{ $t->approval_prompt }}</p>
               @endif
+              @if($t->reference_image)
+                <div class="mt-1">
+                  <img src="{{ Storage::url($t->reference_image) }}" class="w-12 h-12 object-cover rounded-lg border border-gray-200" title="Reference photo">
+                </div>
+              @endif
             </div>
             <div class="flex gap-1 flex-shrink-0">
               <button @click="editing = true"
@@ -222,7 +242,8 @@
 
           {{-- Edit Mode --}}
           <form method="POST" action="{{ route('checklist.update-task', $t) }}"
-                class="px-4 py-3 space-y-2 bg-blue-50/30" x-show="editing" x-transition>
+                class="px-4 py-3 space-y-2 bg-blue-50/30" x-show="editing" x-transition
+                enctype="multipart/form-data">
             @csrf @method('PATCH')
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <input type="text" name="title" value="{{ $t->title }}" required
@@ -307,6 +328,27 @@
                     </div>
                   @endif
                 @endforeach
+              </div>
+            </div>
+
+            {{-- Reference Image (Edit) --}}
+            <div x-data="{ editPreview: {{ $t->reference_image ? "'" . Storage::url($t->reference_image) . "'" : 'null' }}, removeImg: false }">
+              <label class="text-xs text-gray-500 mb-1 block">Reference Photo:</label>
+              <div class="flex items-center gap-3">
+                <label class="cursor-pointer px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs text-gray-600 transition inline-flex items-center gap-1.5">
+                  📷 {{ $t->reference_image ? 'Change Photo' : 'Choose Photo' }}
+                  <input type="file" name="reference_image" accept="image/*" class="hidden"
+                         @change="if($event.target.files[0]) { editPreview = URL.createObjectURL($event.target.files[0]); removeImg = false; }">
+                </label>
+                <template x-if="editPreview && !removeImg">
+                  <div class="flex items-center gap-2">
+                    <img :src="editPreview" class="w-12 h-12 object-cover rounded-lg border border-gray-200">
+                    <button type="button" @click="removeImg = true; editPreview = null" class="text-xs text-red-500 hover:text-red-700">✕ Remove</button>
+                  </div>
+                </template>
+                <template x-if="removeImg">
+                  <input type="hidden" name="remove_reference_image" value="1">
+                </template>
               </div>
             </div>
 

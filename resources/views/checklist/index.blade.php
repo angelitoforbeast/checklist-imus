@@ -355,6 +355,22 @@
                 </div>
               </div>
 
+              {{-- Pinned reference image from admin (left side, like received) --}}
+              @if($task->reference_image)
+                <div class="flex items-start gap-2">
+                  <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white text-sm font-bold" style="background-color:#1877F2">📌</div>
+                  <div>
+                    <div class="bg-gray-200 rounded-2xl rounded-tl-md px-3 py-2">
+                      <p class="text-xs text-gray-500 mb-1.5 font-medium">📌 Reference Photo</p>
+                      <img src="{{ Storage::url($task->reference_image) }}"
+                           @click="$dispatch('open-lightbox', '{{ Storage::url($task->reference_image) }}')"
+                           class="w-48 h-48 object-cover rounded-xl cursor-zoom-in active:scale-95 transition-transform">
+                    </div>
+                    <p class="text-[10px] text-gray-400 mt-1 ml-1">Pinned by Admin</p>
+                  </div>
+                </div>
+              @endif
+
               {{-- Sent photos (right side, like Messenger sent messages) --}}
               <template x-for="(photo, i) in sentPhotos" :key="i">
                 <div class="flex justify-end">
