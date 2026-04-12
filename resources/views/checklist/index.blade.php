@@ -175,12 +175,14 @@
                   <div x-show="expanded" x-collapse>
                     <div class="px-5 pb-4 space-y-2 border-t border-green-200 pt-3">
                       @if($imageFiles->count() > 0)
-                        <div class="flex flex-wrap gap-2">
-                          @foreach($imageFiles as $f)
-                            <img src="{{ Storage::url($f->file_path) }}"
-                                 @click="$dispatch('open-lightbox', '{{ Storage::url($f->file_path) }}')"
-                                 class="w-20 h-20 object-cover rounded-2xl border border-green-200 shadow-sm cursor-zoom-in active:scale-95 transition-transform">
-                          @endforeach
+                        <div class="overflow-x-auto -mx-5 px-5 pb-1" style="-webkit-overflow-scrolling: touch;">
+                          <div class="flex gap-2" style="min-width: min-content;">
+                            @foreach($imageFiles as $f)
+                              <img src="{{ Storage::url($f->file_path) }}"
+                                   @click="$dispatch('open-lightbox', '{{ Storage::url($f->file_path) }}')"
+                                   class="w-20 h-20 flex-shrink-0 object-cover rounded-2xl border border-green-200 shadow-sm cursor-zoom-in active:scale-95 transition-transform">
+                            @endforeach
+                          </div>
                         </div>
                       @endif
                       @if($sub->notes)
@@ -254,9 +256,9 @@
                  @endif
                ],
                async autoUpload(fileList) {
-                 if (this.uploading) return;
-                 for (const file of fileList) {
-                   if (!file.type.startsWith('image/')) continue;
+                 const files = [...fileList].filter(f => f.type.startsWith('image/'));
+                 if (files.length === 0) return;
+                 for (const file of files) {
                    this.uploading = true;
                    const fd = new FormData();
                    fd.append('photo', file);
@@ -334,6 +336,31 @@
             </div>
           </div>
 
+          {{-- ===== PINNED REFERENCE IMAGE (fixed between header and chat) ===== --}}
+          @if($task->reference_image)
+            <div x-data="{ pinExpanded: false }" class="flex-shrink-0 border-b border-gray-200 bg-white">
+              <div class="max-w-lg mx-auto px-4 py-2">
+                <div class="flex items-start gap-2">
+                  <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold" style="background-color:#1877F2">📌</div>
+                  <div class="flex-1 min-w-0">
+                    <button type="button" @click="pinExpanded = !pinExpanded"
+                            class="flex items-center gap-2 text-xs text-gray-500 font-medium mb-1 hover:text-gray-700 transition w-full">
+                      <span>📌 Reference Photo</span>
+                      <svg class="w-3.5 h-3.5 transition-transform" :class="pinExpanded && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <div class="overflow-hidden transition-all duration-300" :style="pinExpanded ? 'max-height: 300px' : 'max-height: 60px'">
+                      <img src="{{ Storage::url($task->reference_image) }}"
+                           @click="$dispatch('open-lightbox', '{{ Storage::url($task->reference_image) }}')"
+                           class="w-full max-w-[200px] object-cover rounded-xl cursor-zoom-in active:scale-95 transition-transform"
+                           :class="pinExpanded ? 'h-auto' : 'h-[60px]'">
+                    </div>
+                    <p class="text-[10px] text-gray-400 mt-0.5" x-text="pinExpanded ? 'Tap to collapse' : 'Tap to expand'"></p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          @endif
+
           {{-- ===== CHAT AREA ===== --}}
           <div class="flex-1 overflow-y-auto bg-gray-50" x-ref="chatArea{{ $task->id }}">
             <div class="max-w-lg mx-auto px-4 py-4 space-y-4">
@@ -355,32 +382,23 @@
                 </div>
               </div>
 
-              {{-- Pinned reference image from admin (left side, like received) --}}
-              @if($task->reference_image)
-                <div class="flex items-start gap-2">
-                  <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white text-sm font-bold" style="background-color:#1877F2">📌</div>
-                  <div>
-                    <div class="bg-gray-200 rounded-2xl rounded-tl-md px-3 py-2">
-                      <p class="text-xs text-gray-500 mb-1.5 font-medium">📌 Reference Photo</p>
-                      <img src="{{ Storage::url($task->reference_image) }}"
-                           @click="$dispatch('open-lightbox', '{{ Storage::url($task->reference_image) }}')"
-                           class="w-48 h-48 object-cover rounded-xl cursor-zoom-in active:scale-95 transition-transform">
+              {{-- Sent photos (right side, horizontal scroll) --}}
+              <template x-if="sentPhotos.length > 0">
+                <div>
+                  <div class="overflow-x-auto -mx-4 px-4 pb-1" style="-webkit-overflow-scrolling: touch;">
+                    <div class="flex gap-2 justify-end" style="min-width: min-content;">
+                      <template x-for="(photo, i) in sentPhotos" :key="i">
+                        <div class="flex-shrink-0 w-36">
+                          <img :src="photo.url"
+                               @click="$dispatch('open-lightbox', photo.url)"
+                               class="w-36 h-36 object-cover rounded-2xl shadow-sm cursor-zoom-in active:scale-95 transition-transform"
+                               :class="i === sentPhotos.length - 1 ? 'rounded-tr-md' : ''">
+                          <p class="text-[10px] text-gray-400 text-right mt-0.5 mr-1 truncate">
+                            <span x-text="photo.by"></span> · <span x-text="photo.time"></span>
+                          </p>
+                        </div>
+                      </template>
                     </div>
-                    <p class="text-[10px] text-gray-400 mt-1 ml-1">Pinned by Admin</p>
-                  </div>
-                </div>
-              @endif
-
-              {{-- Sent photos (right side, like Messenger sent messages) --}}
-              <template x-for="(photo, i) in sentPhotos" :key="i">
-                <div class="flex justify-end">
-                  <div class="max-w-[75%]">
-                    <img :src="photo.url"
-                         @click="$dispatch('open-lightbox', photo.url)"
-                         class="w-48 h-48 object-cover rounded-2xl rounded-tr-md shadow-sm cursor-zoom-in active:scale-95 transition-transform">
-                    <p class="text-[10px] text-gray-400 text-right mt-1 mr-1">
-                      <span x-text="photo.by"></span> · <span x-text="photo.time"></span>
-                    </p>
                   </div>
                 </div>
               </template>

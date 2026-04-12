@@ -492,7 +492,7 @@ class ChecklistController extends Controller
     {
         $today = now()->toDateString();
         $assignedIds = $task->assignedUsers()->pluck('users.id')->toArray();
-        if (!empty($assignedIds) && !in_array(Auth::id(), $assignedIds)) {
+        if (!Auth::user()->isAdmin() && !empty($assignedIds) && !in_array(Auth::id(), $assignedIds)) {
             return response()->json(['error' => 'Not assigned.'], 403);
         }
 
@@ -542,7 +542,7 @@ class ChecklistController extends Controller
     {
         $today = now()->toDateString();
         $assignedIds = $task->assignedUsers()->pluck('users.id')->toArray();
-        if (!empty($assignedIds) && !in_array(Auth::id(), $assignedIds)) {
+        if (!Auth::user()->isAdmin() && !empty($assignedIds) && !in_array(Auth::id(), $assignedIds)) {
             return response()->json(['error' => 'Not assigned.'], 403);
         }
 
