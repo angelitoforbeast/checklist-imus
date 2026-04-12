@@ -119,7 +119,7 @@
         @foreach($pendingTasks as $task)
           @php
             $sub = $submissionsByTask->get($task->id);
-            $photoCount = $sub ? $sub->files->filter(fn($f) => $f->isImage())->count() : 0;
+            $photoCount = $sub ? $sub->files->filter(fn($f) => $f->isImage() || $f->isVideo())->count() : 0;
             $commentCount = ($commentsByTask->get($task->id) ?? collect())->count();
             $reverted = $sub && $sub->status === 'pending';
           @endphp
@@ -175,7 +175,7 @@
               @foreach($completedTasks as $task)
                 @php
                   $sub = $submissionsByTask->get($task->id);
-                  $photoCount = $sub ? $sub->files->filter(fn($f) => $f->isImage())->count() : 0;
+                  $photoCount = $sub ? $sub->files->filter(fn($f) => $f->isImage() || $f->isVideo())->count() : 0;
                   $commentCount = ($commentsByTask->get($task->id) ?? collect())->count();
                 @endphp
                 <div @click="focusTask = {{ $task->id }}; $nextTick(() => { const el = document.getElementById('admin-chat-{{ $task->id }}'); if(el) el.scrollTop = el.scrollHeight; })"
@@ -217,7 +217,7 @@
         $done = $sub && $sub->status === 'completed';
         $reverted = $sub && $sub->status === 'pending';
         $subFiles = ($done || $reverted) ? $sub->files : collect();
-        $imageFiles = $subFiles->filter(fn($f) => $f->isImage());
+        $imageFiles = $subFiles->filter(fn($f) => $f->isImage() || $f->isVideo());
         $taskComments = $commentsByTask->get($task->id) ?? collect();
 
         // Build timeline: interleave photos (grouped by batch), notes, and admin comments
@@ -482,7 +482,7 @@
       foreach ($tasks as $task) {
         $sub = $submissionsByTask->get($task->id);
         if ($sub) {
-          foreach ($sub->files->filter(fn($f) => $f->isImage()) as $f) {
+          foreach ($sub->files->filter(fn($f) => $f->isImage() || $f->isVideo()) as $f) {
             $allImageData->push([
               'src' => Storage::url($f->file_path),
               'sender' => $sub->user->name ?? 'User',
@@ -559,9 +559,16 @@
                this.isDragging = false;
                this.initialPinchDist = 0;
            },
-           handleDblClick(e) {
+           lastTapTime: 0,
+           handleDoubleTap(e) {
                e.stopPropagation();
-               if (this.scale > 1) { this.resetZoom(); } else { this.scale = 3; }
+               const now = Date.now();
+               if (now - this.lastTapTime < 300) {
+                   if (this.scale > 1) { this.resetZoom(); } else { this.scale = 3; }
+                   this.lastTapTime = 0;
+               } else {
+                   this.lastTapTime = now;
+               }
            }
          }"
          @open-lightbox.window="open($event.detail)"
@@ -572,7 +579,7 @@
          x-transition.opacity
          @click="if (scale <= 1) lightbox = false"
          class="fixed inset-0 z-[60] bg-black/90 flex flex-col items-center justify-center"
-         style="display:none">
+         style="display:none; touch-action:none">
 
       {{-- Close button --}}
       <button @click="lightbox = false"
@@ -593,6 +600,7 @@
 
       {{-- Image with zoom --}}
       <div class="flex-1 flex items-center justify-center w-full overflow-hidden p-4"
+           style="touch-action:none"
            @wheel.prevent="handleWheel($event)"
            @touchstart="handleTouchStart($event)"
            @touchmove.prevent="handleTouchMove($event)"
@@ -600,7 +608,8 @@
         <img :src="lightSrc"
              :style="'transform: scale(' + scale + ') translate(' + (translateX/scale) + 'px, ' + (translateY/scale) + 'px); transition: ' + (isDragging ? 'none' : 'transform 0.2s ease')"
              class="max-w-full max-h-full rounded-xl shadow-2xl object-contain select-none"
-             @click.stop="handleDblClick($event)"
+             style="touch-action:none"
+             @click.stop="handleDoubleTap($event)"
              draggable="false">
       </div>
 

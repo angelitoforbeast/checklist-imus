@@ -36,7 +36,7 @@
     @endphp
 
     {{-- ====== ADD TASK FORM (Slide-down) ====== --}}
-    <div x-data="{ showForm: false }"
+    <div x-data="{ showForm: {{ $errors->any() ? 'true' : 'false' }} }"
          @toggle-add-form.window="showForm = !showForm"
          x-show="showForm" x-transition:enter="transition ease-out duration-200"
          x-transition:enter-start="opacity-0 -translate-y-2" x-transition:enter-end="opacity-100 translate-y-0"
@@ -58,14 +58,14 @@
         {{-- Title --}}
         <div>
           <label class="text-xs font-medium text-gray-600 mb-1 block">Task Title *</label>
-          <input type="text" name="title" placeholder="e.g. Clean the kitchen" required
+          <input type="text" name="title" placeholder="e.g. Clean the kitchen" required value="{{ old('title') }}"
                  class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
         </div>
 
         {{-- Description --}}
         <div>
           <label class="text-xs font-medium text-gray-600 mb-1 block">Description <span class="text-gray-400 font-normal">(optional)</span></label>
-          <input type="text" name="description" placeholder="Brief description..."
+          <input type="text" name="description" placeholder="Brief description..." value="{{ old('description') }}"
                  class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
         </div>
 
@@ -74,18 +74,18 @@
           <div>
             <label class="text-xs font-medium text-gray-600 mb-1 block">Submission Type</label>
             <select name="type" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
-              <option value="photo_note">📸 Photo + Note</option>
-              <option value="any">📎 Any</option>
-              <option value="photo">📸 Photo only</option>
-              <option value="note">📝 Note only</option>
-              <option value="both">📸📝 Both required</option>
+              <option value="photo_note" {{ old('type') === 'photo_note' ? 'selected' : '' }}>📸 Photo + Note</option>
+              <option value="any" {{ old('type') === 'any' ? 'selected' : '' }}>📎 Any</option>
+              <option value="photo" {{ old('type') === 'photo' ? 'selected' : '' }}>📸 Photo only</option>
+              <option value="note" {{ old('type') === 'note' ? 'selected' : '' }}>📝 Note only</option>
+              <option value="both" {{ old('type') === 'both' ? 'selected' : '' }}>📸📝 Both required</option>
             </select>
           </div>
           <div>
             <label class="text-xs font-medium text-gray-600 mb-1 block">Frequency</label>
             <select name="frequency" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
-              <option value="daily">🔄 Daily</option>
-              <option value="once">1️⃣ Once</option>
+              <option value="daily" {{ old('frequency') === 'daily' ? 'selected' : '' }}>🔄 Daily</option>
+              <option value="once" {{ old('frequency') === 'once' ? 'selected' : '' }}>1️⃣ Once</option>
             </select>
           </div>
         </div>
@@ -93,7 +93,7 @@
         {{-- Scheduled Time --}}
         <div>
           <label class="text-xs font-medium text-gray-600 mb-1 block">Scheduled Time <span class="text-gray-400 font-normal">(optional)</span></label>
-          <input type="time" name="task_time"
+          <input type="time" name="task_time" value="{{ old('task_time') }}"
                  class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
         </div>
 
@@ -104,7 +104,7 @@
             <svg class="w-3 h-3 transition-transform" :class="show && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
           </button>
           <textarea x-show="show" x-transition name="ai_prompt" rows="2" placeholder="e.g. Check if the workstation is clean..."
-                    class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"></textarea>
+                    class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none">{{ old('ai_prompt') }}</textarea>
         </div>
 
         {{-- Approval Criteria --}}
@@ -114,7 +114,7 @@
             <svg class="w-3 h-3 transition-transform" :class="show && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
           </button>
           <textarea x-show="show" x-transition name="approval_prompt" rows="2" placeholder="e.g. The floor must be visibly clean..."
-                    class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"></textarea>
+                    class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none">{{ old('approval_prompt') }}</textarea>
         </div>
 
         {{-- Assign to --}}

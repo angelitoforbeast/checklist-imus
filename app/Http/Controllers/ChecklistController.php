@@ -74,6 +74,71 @@ class ChecklistController extends Controller
         ));
     }
 
+    /**
+     * Lightweight polling endpoint for user view.
+     * Returns current task statuses + submission counts so the UI can update silently.
+     */
+    public function pollStatus()
+    {
+        $today = now()->toDateString();
+        $user  = Auth::user();
+
+        $tasks = ChecklistTask::with('assignedUsers')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        if (!$user->isAdmin()) {
+            $tasks = $tasks->filter(function ($task) use ($user) {
+                $assignedIds = $task->assignedUsers->pluck('id')->toArray();
+                return empty($assignedIds) || in_array($user->id, $assignedIds);
+            })->values();
+        }
+
+        // Filter out completed once-tasks
+        $onceTaskIds = $tasks->where('frequency', 'once')->pluck('id');
+        if ($onceTaskIds->isNotEmpty()) {
+            $completedOnceIds = ChecklistSubmission::whereIn('checklist_task_id', $onceTaskIds)
+                ->where('status', 'completed')
+                ->where('date', '<', $today)
+                ->pluck('checklist_task_id')
+                ->unique();
+            if ($completedOnceIds->isNotEmpty()) {
+                $tasks = $tasks->reject(fn($t) => $completedOnceIds->contains($t->id))->values();
+            }
+        }
+
+        $submissions = ChecklistSubmission::with('files')
+            ->where('date', $today)
+            ->whereIn('checklist_task_id', $tasks->pluck('id'))
+            ->get()
+            ->keyBy('checklist_task_id');
+
+        $comments = \App\Models\ChecklistTaskComment::where('date', $today)
+            ->get()
+            ->groupBy('checklist_task_id');
+
+        $result = [];
+        foreach ($tasks as $task) {
+            $sub = $submissions->get($task->id);
+            $result[] = [
+                'task_id'       => $task->id,
+                'status'        => $sub ? $sub->status : 'pending',
+                'file_count'    => $sub ? $sub->files->count() : 0,
+                'notes'         => $sub ? $sub->notes : null,
+                'updated_at'    => $sub ? $sub->updated_at->toIso8601String() : null,
+                'comment_count' => isset($comments[$task->id]) ? $comments[$task->id]->count() : 0,
+            ];
+        }
+
+        return response()->json([
+            'tasks'      => $result,
+            'done_count' => collect($result)->where('status', 'completed')->count(),
+            'total'      => count($result),
+        ]);
+    }
+
     public function report(Request $request)
     {
         $date = $request->query('date', now()->toDateString());
@@ -232,6 +297,26 @@ class ChecklistController extends Controller
             ->get()
             ->groupBy('checklist_task_id');
 
+        // Sort tasks: latest submitted first, then pending tasks by sort_order
+        $tasks = $tasks->sort(function ($a, $b) use ($submissionsByTask) {
+            $subA = $submissionsByTask->get($a->id);
+            $subB = $submissionsByTask->get($b->id);
+            $hasA = $subA !== null;
+            $hasB = $subB !== null;
+
+            // Tasks with submissions come first
+            if ($hasA && !$hasB) return -1;
+            if (!$hasA && $hasB) return 1;
+
+            // Both have submissions: sort by latest updated_at descending
+            if ($hasA && $hasB) {
+                return $subB->updated_at->timestamp - $subA->updated_at->timestamp;
+            }
+
+            // Neither has submissions: keep original sort_order
+            return ($a->sort_order ?? 0) - ($b->sort_order ?? 0);
+        })->values();
+
         return view('checklist.conversations', compact(
             'tasks', 'submissionsByTask',
             'doneCount', 'totalTasks',
@@ -261,8 +346,8 @@ class ChecklistController extends Controller
             return back()->with('error', 'You are not assigned to this task.');
         }
 
-        $imageMimes = 'jpg,jpeg,png,gif,webp';
-        $anyMimes   = 'jpg,jpeg,png,gif,webp,pdf,doc,docx,xls,xlsx,csv';
+        $imageMimes = 'jpg,jpeg,png,gif,webp,mp4,mov,avi,mkv,webm,3gp';
+        $anyMimes   = 'jpg,jpeg,png,gif,webp,mp4,mov,avi,mkv,webm,3gp,pdf,doc,docx,xls,xlsx,csv';
 
         $existing = ChecklistSubmission::with('files')->where([
             'checklist_task_id' => $task->id,
@@ -276,19 +361,19 @@ class ChecklistController extends Controller
 
         if ($task->type === 'photo') {
             $rules['files']   = $hasExistingFiles ? 'nullable|array|max:10' : 'required|array|min:1|max:10';
-            $rules['files.*'] = "file|max:10240|mimes:{$imageMimes}";
+            $rules['files.*'] = "file|mimes:{$imageMimes}";
         } elseif ($task->type === 'photo_note') {
             // Photo required, note optional
             $rules['files']   = $hasExistingFiles ? 'nullable|array|max:10' : 'required|array|min:1|max:10';
-            $rules['files.*'] = "file|max:10240|mimes:{$imageMimes}";
+            $rules['files.*'] = "file|mimes:{$imageMimes}";
             $rules['notes']   = 'nullable|string|max:2000';
         } elseif ($task->type === 'both') {
             $rules['notes']   = 'required|string|max:2000';
             $rules['files']   = $hasExistingFiles ? 'nullable|array|max:10' : 'required|array|min:1|max:10';
-            $rules['files.*'] = "file|max:10240|mimes:{$imageMimes}";
+            $rules['files.*'] = "file|mimes:{$imageMimes}";
         } elseif ($task->type === 'any') {
             $rules['files']   = 'nullable|array|max:10';
-            $rules['files.*'] = "file|max:10240|mimes:{$anyMimes}";
+            $rules['files.*'] = "file|mimes:{$anyMimes}";
         }
 
         $request->validate($rules);
@@ -420,7 +505,7 @@ class ChecklistController extends Controller
             'approval_prompt' => 'nullable|string|max:2000',
             'task_time'       => 'nullable|date_format:H:i',
             'frequency'       => 'nullable|in:daily,once',
-            'reference_image' => 'nullable|image|max:5120',
+            'reference_image' => 'nullable|image',
         ]);
 
         $imagePath = null;
@@ -453,7 +538,7 @@ class ChecklistController extends Controller
             'approval_prompt' => 'nullable|string|max:2000',
             'task_time'       => 'nullable|date_format:H:i',
             'frequency'       => 'nullable|in:daily,once',
-            'reference_image' => 'nullable|image|max:5120',
+            'reference_image' => 'nullable|image',
         ]);
 
         if ($request->hasFile('reference_image')) {
@@ -674,7 +759,7 @@ class ChecklistController extends Controller
         }
 
         $request->validate([
-            'photo' => 'required|file|max:10240|mimes:jpg,jpeg,png,gif,webp',
+            'photo' => 'required|file|mimes:jpg,jpeg,png,gif,webp,mp4,mov,avi,mkv,webm,3gp',
         ]);
 
         // Find or create today's submission

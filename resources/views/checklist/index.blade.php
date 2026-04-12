@@ -33,7 +33,7 @@
                           stroke-width="3" stroke-linecap="round"
                           stroke-dasharray="{{ $totalTasks > 0 ? round($doneCount / $totalTasks * 94.2) : 0 }} 94.2"/>
                 </svg>
-                <span class="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-700">{{ $doneCount }}/{{ $totalTasks }}</span>
+                <span class="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-700" data-poll-counter>{{ $doneCount }}/{{ $totalTasks }}</span>
               </div>
             </div>
             @if(Auth::user()->isAdmin())
@@ -93,7 +93,7 @@
             $isAssigned  = empty($assignedIds) || in_array(Auth::id(), $assignedIds);
           @endphp
 
-          <div class="rounded-3xl shadow-sm overflow-hidden bg-white border-2 border-blue-300">
+          <div class="rounded-3xl shadow-sm overflow-hidden bg-white border-2 border-blue-300" data-poll-task="{{ $task->id }}">
             <div class="px-5 pt-4 pb-3">
               <div class="flex items-start justify-between gap-3">
                 <div class="flex-1 min-w-0">
@@ -111,7 +111,7 @@
                     </div>
                   @endif
                 </div>
-                <span class="text-xs font-bold text-blue-700 bg-blue-100 px-3 py-1 rounded-full flex-shrink-0">PENDING</span>
+                <span class="text-xs font-bold text-blue-700 bg-blue-100 px-3 py-1 rounded-full flex-shrink-0" data-poll-status="pending">PENDING</span>
               </div>
             </div>
 
@@ -152,7 +152,7 @@
                 @endphp
 
                 <div x-data="{ expanded: false }"
-                     class="rounded-3xl shadow-sm overflow-hidden bg-green-50 border-2 border-green-200">
+                     class="rounded-3xl shadow-sm overflow-hidden bg-green-50 border-2 border-green-200" data-poll-task="{{ $task->id }}">
                   <button @click="expanded = !expanded" class="w-full px-5 py-3 text-left">
                     <div class="flex items-center justify-between gap-3">
                       <div class="flex items-center gap-2.5 flex-1 min-w-0">
@@ -167,7 +167,7 @@
                         </div>
                       </div>
                       <div class="flex items-center gap-2 flex-shrink-0">
-                        <span class="text-xs font-bold text-green-600 bg-green-100 px-2.5 py-0.5 rounded-full">DONE</span>
+                        <span class="text-xs font-bold text-green-600 bg-green-100 px-2.5 py-0.5 rounded-full" data-poll-status="completed">DONE</span>
                         <svg class="w-4 h-4 text-green-500 transition-transform duration-200" :class="expanded ? 'rotate-180' : ''"
                              fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                       </div>
@@ -434,13 +434,21 @@
                       <div class="max-w-[85%]">
                         <div class="flex flex-wrap gap-1.5 justify-end">
                           <template x-for="(photo, pi) in msg.photos" :key="'p'+mi+'_'+pi">
-                            <img :src="photo.url"
-                                 :data-lightbox-src="photo.url"
-                                 :data-lightbox-sender="msg.by"
-                                 :data-lightbox-time="msg.time"
-                                 @click="$dispatch('open-lightbox', photo.url)"
-                                 class="w-28 h-28 object-cover rounded-2xl shadow-sm cursor-zoom-in active:scale-95 transition-transform"
-                                 :class="pi === 0 && msg.photos.length === 1 ? 'rounded-tr-md' : ''">
+                            <template x-if="photo.url && (photo.url.endsWith('.mp4') || photo.url.endsWith('.mov') || photo.url.endsWith('.webm') || photo.url.endsWith('.avi') || photo.url.endsWith('.3gp') || photo.mime?.startsWith('video/'))">
+                              <video :src="photo.url" controls playsinline
+                                     class="w-40 h-28 object-cover rounded-2xl shadow-sm"
+                                     :class="pi === 0 && msg.photos.length === 1 ? 'rounded-tr-md' : ''">
+                              </video>
+                            </template>
+                            <template x-if="!(photo.url && (photo.url.endsWith('.mp4') || photo.url.endsWith('.mov') || photo.url.endsWith('.webm') || photo.url.endsWith('.avi') || photo.url.endsWith('.3gp') || photo.mime?.startsWith('video/')))">
+                              <img :src="photo.url"
+                                   :data-lightbox-src="photo.url"
+                                   :data-lightbox-sender="msg.by"
+                                   :data-lightbox-time="msg.time"
+                                   @click="$dispatch('open-lightbox', photo.url)"
+                                   class="w-28 h-28 object-cover rounded-2xl shadow-sm cursor-zoom-in active:scale-95 transition-transform"
+                                   :class="pi === 0 && msg.photos.length === 1 ? 'rounded-tr-md' : ''">
+                            </template>
                           </template>
                         </div>
                         <p class="text-[10px] text-gray-400 text-right mt-1 mr-1">
@@ -523,10 +531,10 @@
 
                   {{-- Hidden file inputs with auto-upload --}}
                   <input type="file" x-ref="msgCam{{ $task->id }}" class="hidden"
-                         accept="image/*" capture="environment"
+                         accept="image/*,video/*" capture="environment"
                          @change="autoUpload($event.target.files); $event.target.value='';">
                   <input type="file" x-ref="msgGal{{ $task->id }}" class="hidden"
-                         multiple accept="image/*"
+                         multiple accept="image/*,video/*"
                          @change="autoUpload($event.target.files); $event.target.value='';">
                 @endif
 
@@ -637,9 +645,16 @@
                }
            },
            handleTouchEnd(e) { this.isDragging = false; this.initialPinchDist = 0; },
-           handleDblClick(e) {
+           lastTapTime: 0,
+           handleDoubleTap(e) {
                e.stopPropagation();
-               if (this.scale > 1) { this.resetZoom(); } else { this.scale = 3; }
+               const now = Date.now();
+               if (now - this.lastTapTime < 300) {
+                   if (this.scale > 1) { this.resetZoom(); } else { this.scale = 3; }
+                   this.lastTapTime = 0;
+               } else {
+                   this.lastTapTime = now;
+               }
            }
        }"
        @open-lightbox.window="open($event.detail)"
@@ -650,7 +665,7 @@
        x-transition.opacity
        @click="if (scale <= 1) lightbox = false"
        class="fixed inset-0 z-[60] bg-black/90 flex flex-col items-center justify-center"
-       style="display:none">
+       style="display:none; touch-action:none">
 
     {{-- Close button --}}
     <button @click="lightbox = false"
@@ -671,6 +686,7 @@
 
     {{-- Image with zoom --}}
     <div class="flex-1 flex items-center justify-center w-full overflow-hidden p-4"
+         style="touch-action:none"
          @wheel.prevent="handleWheel($event)"
          @touchstart="handleTouchStart($event)"
          @touchmove.prevent="handleTouchMove($event)"
@@ -678,7 +694,8 @@
       <img :src="lightSrc"
            :style="'transform: scale(' + scale + ') translate(' + (translateX/scale) + 'px, ' + (translateY/scale) + 'px); transition: ' + (isDragging ? 'none' : 'transform 0.2s ease')"
            class="max-w-full max-h-full rounded-2xl shadow-2xl object-contain select-none"
-           @click.stop="handleDblClick($event)"
+           style="touch-action:none"
+           @click.stop="handleDoubleTap($event)"
            draggable="false">
     </div>
 
@@ -695,5 +712,81 @@
       <p class="text-white/60 text-xs" x-text="senderTime"></p>
     </div>
   </div>
+
+  {{-- ===== SILENT POLLING (5s) ===== --}}
+  <script>
+  (function() {
+      const POLL_INTERVAL = 5000;
+      const POLL_URL = '{{ route("checklist.poll-status") }}';
+
+      async function poll() {
+          try {
+              const resp = await fetch(POLL_URL, {
+                  headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                  credentials: 'same-origin'
+              });
+              if (!resp.ok) return;
+              const data = await resp.json();
+
+              // Update progress counter
+              const counterEl = document.querySelector('[data-poll-counter]');
+              if (counterEl) {
+                  counterEl.textContent = data.done_count + '/' + data.total + ' Done';
+              }
+
+              // Update each task's status badge
+              data.tasks.forEach(t => {
+                  const card = document.querySelector('[data-poll-task="' + t.task_id + '"]');
+                  if (!card) return;
+
+                  const badge = card.querySelector('[data-poll-status]');
+                  if (badge) {
+                      const oldStatus = badge.dataset.pollStatus;
+                      if (oldStatus !== t.status) {
+                          badge.dataset.pollStatus = t.status;
+                          // Update badge appearance
+                          if (t.status === 'completed') {
+                              badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700';
+                              badge.textContent = 'DONE';
+                          } else if (t.status === 'reverted') {
+                              badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700';
+                              badge.textContent = 'REVERTED';
+                          } else if (t.status === 'submitted') {
+                              badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700';
+                              badge.textContent = 'SUBMITTED';
+                          } else {
+                              badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500';
+                              badge.textContent = 'PENDING';
+                          }
+
+                          // If status changed to reverted, show a subtle flash
+                          if (t.status === 'reverted' && oldStatus === 'completed') {
+                              card.style.transition = 'background-color 0.5s';
+                              card.style.backgroundColor = '#FFF7ED';
+                              setTimeout(() => { card.style.backgroundColor = ''; }, 2000);
+                          }
+                      }
+                  }
+
+                  // Update comment count
+                  const commentBadge = card.querySelector('[data-poll-comments]');
+                  if (commentBadge) {
+                      if (t.comment_count > 0) {
+                          commentBadge.textContent = t.comment_count + ' comment' + (t.comment_count > 1 ? 's' : '');
+                          commentBadge.style.display = '';
+                      } else {
+                          commentBadge.style.display = 'none';
+                      }
+                  }
+              });
+          } catch (e) {
+              // Silent fail — will retry next interval
+          }
+      }
+
+      // Start polling
+      setInterval(poll, POLL_INTERVAL);
+  })();
+  </script>
 
 </x-layout>
