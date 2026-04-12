@@ -80,37 +80,32 @@
         </div>
 
         {{-- Assign to - Dropdown grouped by role --}}
-        <div x-data="{ open: false }" class="relative">
+        <div x-data="{ open: false, selectedCount: 0, updateCount() { this.selectedCount = this.$root.querySelectorAll('.add-form-cb:checked').length; } }" class="relative">
           <label class="text-xs text-gray-500 mb-1.5 block">Assign to (leave blank = anyone can submit):</label>
           <button type="button" @click="open = !open"
                   class="w-full sm:w-auto min-w-[280px] border border-gray-300 rounded-lg px-3 py-2 text-sm text-left bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-400 flex items-center justify-between gap-2">
-            <span class="text-gray-500" x-text="
-              (() => {
-                const checked = [...document.querySelectorAll('input[name=\'assigned_users[]\']:checked')];
-                if (checked.length === 0) return 'Select users...';
-                return checked.length + ' user(s) selected';
-              })()
-            ">Select users...</span>
+            <span class="text-gray-500" x-text="selectedCount === 0 ? 'Select users...' : selectedCount + ' user(s) selected'">Select users...</span>
             <svg class="w-4 h-4 text-gray-400 transition-transform" :class="open && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
           </button>
 
-          <div x-show="open" @click.away="open = false" x-transition
-               class="absolute z-20 mt-1 w-full sm:w-[320px] bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto p-2 space-y-1">
+          <div x-show="open" x-transition
+               class="absolute z-20 mt-1 w-full sm:w-[320px] bg-white border border-gray-200 rounded-xl shadow-lg max-h-72 overflow-y-auto p-2 space-y-1">
             @foreach($roles as $role)
               @if($role->users->count() > 0)
                 <div class="space-y-0.5">
                   {{-- Role header with select-all checkbox --}}
                   <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-gray-50 cursor-pointer hover:bg-gray-100 font-medium text-xs text-gray-700"
-                         x-data
                          @click.prevent="
-                           const cbs = $el.closest('.space-y-0\\.5').querySelectorAll('input.user-cb');
+                           const cbs = $el.closest('.space-y-0\\.5').querySelectorAll('input.add-form-cb');
                            const allChecked = [...cbs].every(c => c.checked);
                            cbs.forEach(c => c.checked = !allChecked);
+                           updateCount();
                          ">
                     <input type="checkbox" class="accent-blue-600 pointer-events-none role-cb"
                            @click.stop="
-                             const cbs = $el.closest('.space-y-0\\.5').querySelectorAll('input.user-cb');
+                             const cbs = $el.closest('.space-y-0\\.5').querySelectorAll('input.add-form-cb');
                              cbs.forEach(c => c.checked = $el.checked);
+                             updateCount();
                            ">
                     {{ $role->name }}
                     <span class="text-gray-400 font-normal">({{ $role->users->count() }})</span>
@@ -118,7 +113,8 @@
                   {{-- Individual users --}}
                   @foreach($role->users as $u)
                     <label class="flex items-center gap-2 px-2 py-1 pl-7 rounded-lg cursor-pointer hover:bg-gray-50 text-xs text-gray-600">
-                      <input type="checkbox" name="assigned_users[]" value="{{ $u->id }}" class="accent-blue-600 user-cb">
+                      <input type="checkbox" name="assigned_users[]" value="{{ $u->id }}" class="accent-blue-600 add-form-cb"
+                             @change="updateCount()">
                       {{ $u->name }}
                       <span class="text-gray-300 text-xs">{{ $u->email }}</span>
                     </label>
@@ -126,6 +122,13 @@
                 </div>
               @endif
             @endforeach
+            {{-- Okay button --}}
+            <div class="sticky bottom-0 pt-2 pb-1 bg-white border-t border-gray-100 mt-1">
+              <button type="button" @click="open = false"
+                      class="w-full py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition">
+                Okay
+              </button>
+            </div>
           </div>
         </div>
 
@@ -282,36 +285,31 @@
             <input type="hidden" name="is_active" value="{{ $t->is_active ? '1' : '0' }}">
 
             {{-- Assign to - Dropdown grouped by role (Edit mode) --}}
-            <div x-data="{ editOpen: false }" class="relative">
+            <div x-data="{ editOpen: false, editCount: {{ count($assignedIds) }}, updateEditCount() { this.editCount = this.$root.querySelectorAll('.edit-cb-{{ $t->id }}:checked').length; } }" class="relative">
               <label class="text-xs text-gray-500 mb-1.5 block">Assigned to (blank = anyone):</label>
               <button type="button" @click="editOpen = !editOpen"
                       class="w-full sm:w-auto min-w-[280px] border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-left bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-400 flex items-center justify-between gap-2">
-                <span class="text-gray-500">
-                  @if(count($assignedIds) > 0)
-                    {{ count($assignedIds) }} user(s) selected
-                  @else
-                    Select users...
-                  @endif
-                </span>
+                <span class="text-gray-500" x-text="editCount === 0 ? 'Select users...' : editCount + ' user(s) selected'">{{ count($assignedIds) > 0 ? count($assignedIds) . ' user(s) selected' : 'Select users...' }}</span>
                 <svg class="w-4 h-4 text-gray-400 transition-transform" :class="editOpen && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
               </button>
 
-              <div x-show="editOpen" @click.away="editOpen = false" x-transition
-                   class="absolute z-20 mt-1 w-full sm:w-[320px] bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto p-2 space-y-1">
+              <div x-show="editOpen" x-transition
+                   class="absolute z-20 mt-1 w-full sm:w-[320px] bg-white border border-gray-200 rounded-xl shadow-lg max-h-72 overflow-y-auto p-2 space-y-1">
                 @foreach($roles as $role)
                   @if($role->users->count() > 0)
                     <div class="space-y-0.5">
                       <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-gray-50 cursor-pointer hover:bg-gray-100 font-medium text-xs text-gray-700"
-                             x-data
                              @click.prevent="
-                               const cbs = $el.closest('.space-y-0\\.5').querySelectorAll('input.user-cb-edit-{{ $t->id }}');
+                               const cbs = $el.closest('.space-y-0\\.5').querySelectorAll('input.edit-cb-{{ $t->id }}');
                                const allChecked = [...cbs].every(c => c.checked);
                                cbs.forEach(c => c.checked = !allChecked);
+                               updateEditCount();
                              ">
                         <input type="checkbox" class="accent-blue-600 pointer-events-none"
                                @click.stop="
-                                 const cbs = $el.closest('.space-y-0\\.5').querySelectorAll('input.user-cb-edit-{{ $t->id }}');
+                                 const cbs = $el.closest('.space-y-0\\.5').querySelectorAll('input.edit-cb-{{ $t->id }}');
                                  cbs.forEach(c => c.checked = $el.checked);
+                                 updateEditCount();
                                ">
                         {{ $role->name }}
                         <span class="text-gray-400 font-normal">({{ $role->users->count() }})</span>
@@ -320,7 +318,8 @@
                         <label class="flex items-center gap-2 px-2 py-1 pl-7 rounded-lg cursor-pointer hover:bg-gray-50 text-xs text-gray-600">
                           <input type="checkbox" name="assigned_users[]" value="{{ $u->id }}"
                                  {{ in_array($u->id, $assignedIds) ? 'checked' : '' }}
-                                 class="accent-blue-600 user-cb-edit-{{ $t->id }}">
+                                 class="accent-blue-600 edit-cb-{{ $t->id }}"
+                                 @change="updateEditCount()">
                           {{ $u->name }}
                           <span class="text-gray-300 text-xs">{{ $u->email }}</span>
                         </label>
@@ -328,6 +327,13 @@
                     </div>
                   @endif
                 @endforeach
+                {{-- Okay button --}}
+                <div class="sticky bottom-0 pt-2 pb-1 bg-white border-t border-gray-100 mt-1">
+                  <button type="button" @click="editOpen = false"
+                          class="w-full py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition">
+                    Okay
+                  </button>
+                </div>
               </div>
             </div>
 
