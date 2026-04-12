@@ -456,21 +456,20 @@
                       <div class="max-w-[85%]">
                         <div class="flex flex-wrap gap-1.5 justify-end">
                           <template x-for="(photo, pi) in msg.photos" :key="'p'+mi+'_'+pi">
-                            <template x-if="photo.url && (photo.url.endsWith('.mp4') || photo.url.endsWith('.mov') || photo.url.endsWith('.webm') || photo.url.endsWith('.avi') || photo.url.endsWith('.3gp') || photo.mime?.startsWith('video/'))">
-                              <video :src="photo.url" controls playsinline
+                            <div class="inline-block">
+                              <video x-show="photo.url && (photo.url.endsWith('.mp4') || photo.url.endsWith('.mov') || photo.url.endsWith('.webm') || photo.url.endsWith('.avi') || photo.url.endsWith('.3gp'))" :src="photo.url" controls playsinline
                                      class="w-40 h-28 object-cover rounded-2xl shadow-sm"
                                      :class="pi === 0 && msg.photos.length === 1 ? 'rounded-tr-md' : ''">
                               </video>
-                            </template>
-                            <template x-if="!(photo.url && (photo.url.endsWith('.mp4') || photo.url.endsWith('.mov') || photo.url.endsWith('.webm') || photo.url.endsWith('.avi') || photo.url.endsWith('.3gp') || photo.mime?.startsWith('video/')))">
-                              <img :src="photo.url"
+                              <img x-show="!(photo.url && (photo.url.endsWith('.mp4') || photo.url.endsWith('.mov') || photo.url.endsWith('.webm') || photo.url.endsWith('.avi') || photo.url.endsWith('.3gp')))"
+                                   :src="photo.url"
                                    :data-lightbox-src="photo.url"
                                    :data-lightbox-sender="msg.by"
                                    :data-lightbox-time="msg.time"
                                    @click="$dispatch('open-lightbox', photo.url)"
                                    class="w-28 h-28 object-cover rounded-2xl shadow-sm cursor-zoom-in active:scale-95 transition-transform"
                                    :class="pi === 0 && msg.photos.length === 1 ? 'rounded-tr-md' : ''">
-                            </template>
+                            </div>
                           </template>
                         </div>
                         <p class="text-[10px] text-gray-400 text-right mt-1 mr-1">
