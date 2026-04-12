@@ -13,7 +13,7 @@
       if (!this.commentText.trim() || this.sending) return;
       this.sending = true;
       try {
-        const res = await fetch('/checklist/send-comment/' + taskId, {
+        const res = await fetch('/checklist/task/' + taskId + '/send-comment', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

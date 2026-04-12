@@ -478,7 +478,7 @@ class ChecklistController extends Controller
             'message'           => $request->message,
         ]);
 
-        return back()->with('success', 'Comment sent.');
+        return response()->json(['success' => true, 'comment_id' => $comment->id]);
     }
 
     public function deleteFile(ChecklistSubmissionFile $file)
