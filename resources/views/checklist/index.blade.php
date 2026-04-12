@@ -28,7 +28,7 @@
                 <svg class="w-10 h-10 -rotate-90" viewBox="0 0 36 36">
                   <circle cx="18" cy="18" r="15" fill="none" stroke="#e5e7eb" stroke-width="3"/>
                   <circle cx="18" cy="18" r="15" fill="none"
-                          stroke="{{ $doneCount === $totalTasks && $totalTasks > 0 ? '#22c55e' : '#3b82f6' }}"
+                          stroke="{{ $doneCount === $totalTasks && $totalTasks > 0 ? '#22c55e' : '#1877F2' }}"
                           stroke-width="3" stroke-linecap="round"
                           stroke-dasharray="{{ $totalTasks > 0 ? round($doneCount / $totalTasks * 94.2) : 0 }} 94.2"/>
                 </svg>
@@ -90,13 +90,13 @@
             $isAssigned  = empty($assignedIds) || in_array(Auth::id(), $assignedIds);
           @endphp
 
-          <div class="rounded-3xl shadow-sm overflow-hidden bg-white border-2 border-orange-200">
+          <div class="rounded-3xl shadow-sm overflow-hidden bg-white border-2 border-blue-300">
             <div class="px-5 pt-4 pb-3">
               <div class="flex items-start justify-between gap-3">
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2.5">
-                    <div class="w-7 h-7 rounded-full border-2 border-orange-300 bg-orange-50 flex items-center justify-center flex-shrink-0">
-                      <div class="w-2.5 h-2.5 rounded-full bg-orange-400"></div>
+                    <div class="w-7 h-7 rounded-full border-2 border-blue-400 bg-blue-50 flex items-center justify-center flex-shrink-0">
+                      <div class="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
                     </div>
                     <h2 class="text-base font-bold text-gray-800 leading-tight">{{ $task->title }}</h2>
                   </div>
@@ -108,7 +108,7 @@
                     </div>
                   @endif
                 </div>
-                <span class="text-xs font-bold text-orange-600 bg-orange-100 px-3 py-1 rounded-full flex-shrink-0">PENDING</span>
+                <span class="text-xs font-bold text-blue-700 bg-blue-100 px-3 py-1 rounded-full flex-shrink-0">PENDING</span>
               </div>
             </div>
 
@@ -117,9 +117,10 @@
               <div class="px-5 pb-4">
                 <button @click="setFocus({{ $task->id }})"
                         class="w-full py-3.5 rounded-2xl font-bold text-base transition-all duration-200
-                          bg-orange-500 text-white active:bg-orange-600 active:scale-[0.98] shadow-lg shadow-orange-200">
+                          text-white active:scale-[0.98] shadow-lg" style="background-color:#1877F2; box-shadow: 0 10px 15px -3px rgba(24,119,242,0.3)">
                   📸 Upload Photo
                 </button>
+
               </div>
             @endif
           </div>
@@ -293,15 +294,15 @@
 
           <div class="max-w-lg mx-auto px-4 py-5">
             {{-- Task Info Card --}}
-            <div class="bg-white rounded-3xl shadow-sm p-5 mb-4 border-2 {{ $done ? 'border-green-200' : 'border-orange-200' }}">
+            <div class="bg-white rounded-3xl shadow-sm p-5 mb-4 border-2 {{ $done ? 'border-green-200' : 'border-blue-300' }}">
               <div class="flex items-center gap-3">
                 @if($done)
                   <div class="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
                     <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                   </div>
                 @else
-                  <div class="w-10 h-10 rounded-full border-2 border-orange-300 bg-orange-50 flex items-center justify-center flex-shrink-0">
-                    <div class="w-3 h-3 rounded-full bg-orange-400"></div>
+                  <div class="w-10 h-10 rounded-full border-2 border-blue-400 bg-blue-50 flex items-center justify-center flex-shrink-0">
+                    <div class="w-3 h-3 rounded-full bg-blue-500"></div>
                   </div>
                 @endif
                 <div class="flex-1">
@@ -310,8 +311,8 @@
                     @if($task->task_time)
                       <span class="text-xs font-semibold text-blue-600">🕐 {{ \Carbon\Carbon::parse($task->task_time)->format('g:i A') }}</span>
                     @endif
-                    <span class="text-xs font-bold {{ $done ? 'text-green-600' : 'text-orange-600' }}">
-                      {{ $done ? '✅ DONE' : '⏳ PENDING' }}
+                    <span class="text-xs font-bold {{ $done ? 'text-green-600' : 'text-blue-700' }}">
+                      {{ $done ? '✅ DONE' : '📋 PENDING' }}
                     </span>
                   </div>
                 </div>
@@ -356,10 +357,10 @@
                       <template x-for="(item, i) in queue" :key="i">
                         <div class="relative">
                           <template x-if="item.isImg">
-                            <img :src="item.url" class="w-24 h-24 object-cover rounded-2xl border-2 border-orange-200 shadow-sm">
+                            <img :src="item.url" class="w-24 h-24 object-cover rounded-2xl border-2 border-blue-200 shadow-sm">
                           </template>
                           <template x-if="!item.isImg">
-                            <div class="w-24 h-24 flex flex-col items-center justify-center rounded-2xl border-2 border-orange-200 bg-orange-50 text-xs text-orange-500">
+                            <div class="w-24 h-24 flex flex-col items-center justify-center rounded-2xl border-2 border-blue-200 bg-blue-50 text-xs text-blue-500">
                               <span class="text-2xl">📎</span>
                               <span class="truncate w-full text-center px-1" x-text="item.name.split('.').pop().toUpperCase()"></span>
                             </div>
@@ -379,9 +380,9 @@
                       <p class="text-xs font-bold text-blue-600 mt-1">Take Photo</p>
                     </button>
                     <button type="button" @click="$refs.focusGal{{ $task->id }}.click()"
-                            class="py-5 rounded-2xl border-2 border-dashed border-purple-300 bg-purple-50 text-center active:bg-purple-100 active:scale-[0.97] transition-all">
+                            class="py-5 rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/50 text-center active:bg-blue-100 active:scale-[0.97] transition-all">
                       <p class="text-4xl">🖼️</p>
-                      <p class="text-xs font-bold text-purple-600 mt-1">From Gallery</p>
+                      <p class="text-xs font-bold text-blue-500 mt-1">From Gallery</p>
                     </button>
                   </div>
 
