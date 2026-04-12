@@ -2,646 +2,342 @@
   <x-slot name="heading">Daily Checklist</x-slot>
   <x-slot name="title">Daily Checklist</x-slot>
 
-  <div class="min-h-screen bg-gray-50 mt-16">
+  <div class="min-h-screen bg-gray-100 mt-14 pb-8">
 
-    {{-- ===== HEADER ===== --}}
-    <div class="bg-white border-b border-gray-200 shadow-sm">
-      <div class="max-w-screen-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 class="text-base font-bold text-gray-800">Daily Checklist</h1>
-          <p class="text-xs text-gray-400">{{ now()->format('l, F j, Y') }}</p>
-        </div>
-        <div class="flex items-center gap-3">
-          <div class="flex items-center gap-2">
-            <div class="w-28 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div class="h-1.5 rounded-full transition-all duration-500 {{ $doneCount === $totalTasks && $totalTasks > 0 ? 'bg-green-500' : 'bg-blue-500' }}"
-                   style="width: {{ $totalTasks > 0 ? round($doneCount / $totalTasks * 100) : 0 }}%"></div>
-            </div>
-            <span class="text-xs font-semibold text-gray-500">{{ $doneCount }}/{{ $totalTasks }}</span>
+    {{-- ===== STICKY HEADER ===== --}}
+    <div class="bg-white border-b border-gray-200 shadow-sm sticky top-14 z-30">
+      <div class="max-w-lg mx-auto px-4 py-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-lg font-bold text-gray-800">My Tasks</h1>
+            <p class="text-xs text-gray-400">{{ now()->format('l, F j, Y') }}</p>
           </div>
-          @if(Auth::user()->isAdmin())
-            <a href="{{ route('checklist.report') }}" class="hidden sm:inline-flex text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition">📋 Report</a>
-            <a href="{{ route('checklist.manage') }}" class="hidden sm:inline-flex text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition">⚙ Manage</a>
-          @endif
+          <div class="flex items-center gap-3">
+            {{-- Progress --}}
+            <div class="flex items-center gap-2">
+              <div class="relative w-10 h-10">
+                <svg class="w-10 h-10 -rotate-90" viewBox="0 0 36 36">
+                  <circle cx="18" cy="18" r="15" fill="none" stroke="#e5e7eb" stroke-width="3"/>
+                  <circle cx="18" cy="18" r="15" fill="none"
+                          stroke="{{ $doneCount === $totalTasks && $totalTasks > 0 ? '#22c55e' : '#3b82f6' }}"
+                          stroke-width="3" stroke-linecap="round"
+                          stroke-dasharray="{{ $totalTasks > 0 ? round($doneCount / $totalTasks * 94.2) : 0 }} 94.2"/>
+                </svg>
+                <span class="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-700">{{ $doneCount }}/{{ $totalTasks }}</span>
+              </div>
+            </div>
+            @if(Auth::user()->isAdmin())
+              <a href="{{ route('checklist.report') }}" class="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition" title="Report">📋</a>
+            @endif
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="max-w-screen-2xl mx-auto px-4 py-5 space-y-4">
+    <div class="max-w-lg mx-auto px-4 pt-4 space-y-3">
 
       {{-- Alerts --}}
       @if(session('success'))
-        <div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl text-sm flex gap-2 items-center">
-          <span class="text-green-500 font-bold">✓</span> {{ session('success') }}
+        <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-2xl text-sm font-medium flex gap-2 items-center">
+          <span class="text-xl">✅</span> {{ session('success') }}
         </div>
       @endif
       @if(session('error'))
-        <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl text-sm">{{ session('error') }}</div>
+        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl text-sm">{{ session('error') }}</div>
       @endif
       @if($errors->any())
-        <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl text-sm space-y-0.5">
-          @foreach($errors->all() as $e)<div>• {{ $e }}</div>@endforeach
+        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl text-sm space-y-1">
+          @foreach($errors->all() as $e)<div>⚠️ {{ $e }}</div>@endforeach
         </div>
       @endif
 
       @php
         $isAdmin = Auth::user()?->isAdmin();
-
-        // Sort: pending (no submission) first, then completed
         $pendingTasks = $tasks->filter(fn($t) => !$submissionsByTask->has($t->id));
         $doneTasks    = $tasks->filter(fn($t) => $submissionsByTask->has($t->id));
         $sortedTasks  = $pendingTasks->concat($doneTasks);
+
+        $allImageUrls = [];
+        foreach($tasks as $task) {
+            $sub = $submissionsByTask->get($task->id);
+            if (!$sub) continue;
+            foreach($sub->files->filter(fn($f) => $f->isImage()) as $f) {
+                $allImageUrls[] = Storage::url($f->file_path);
+            }
+        }
       @endphp
 
       @if($tasks->isEmpty())
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-14 text-center">
-          <p class="text-3xl mb-3">📋</p>
-          <p class="text-gray-500 font-medium">No active tasks</p>
-          @if($isAdmin)
-            <p class="text-sm text-gray-400 mt-1">Go to <a href="{{ route('checklist.manage') }}" class="text-blue-500 hover:underline">Manage Tasks</a> to add tasks.</p>
-          @endif
+        <div class="bg-white rounded-3xl shadow-sm p-10 text-center">
+          <p class="text-5xl mb-3">📋</p>
+          <p class="text-gray-500 font-semibold text-lg">No tasks for today</p>
+          <p class="text-sm text-gray-400 mt-1">You're all set!</p>
         </div>
       @else
-        @php
-          $allImageUrls = [];
-          foreach($tasks as $task) {
-              $sub = $submissionsByTask->get($task->id);
-              if (!$sub) continue;
-              $subFiles = $sub->files;
-              foreach($subFiles->filter(fn($f) => $f->isImage()) as $f) {
-                  $allImageUrls[] = Storage::url($f->file_path);
-              }
-              if ($subFiles->count() === 0 && $sub->file_path && $sub->isImage()) {
-                  $allImageUrls[] = Storage::url($sub->file_path);
-              }
-          }
-        @endphp
 
-        {{-- ===== DESKTOP TABLE VIEW ===== --}}
-        <div class="hidden md:block bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm border-collapse">
-              <thead>
-                <tr class="border-b border-gray-100 bg-gray-50/80 text-xs text-gray-400 uppercase tracking-wide font-semibold">
-                  <th class="text-left px-4 py-3 w-8"></th>
-                  <th class="text-left px-3 py-3 min-w-[160px]">Task</th>
-                  <th class="text-left px-3 py-3 min-w-[130px]">Description</th>
-                  <th class="text-left px-3 py-3 w-[160px]">Images</th>
-                  <th class="text-left px-3 py-3 min-w-[180px]">Notes</th>
-                  <th class="text-left px-3 py-3 min-w-[130px]">Submitted by</th>
-                  <th class="px-3 py-3 w-[100px]"></th>
-                </tr>
-              </thead>
+        {{-- ===== TASK CARDS ===== --}}
+        @foreach($sortedTasks as $task)
+          @php
+            $sub         = $submissionsByTask->get($task->id);
+            $done        = $sub !== null;
+            $isMine      = $sub && $sub->user_id === Auth::id();
+            $assignedIds = $task->assignedUsers->pluck('id')->toArray();
+            $isAssigned  = empty($assignedIds) || in_array(Auth::id(), $assignedIds);
+            $canSubmit   = !$done && $isAssigned;
+            $subFiles    = $done ? $sub->files : collect();
+            $imageFiles  = $subFiles->filter(fn($f) => $f->isImage());
+          @endphp
 
-              @foreach($sortedTasks as $task)
-                @php
-                  $sub         = $submissionsByTask->get($task->id);
-                  $done        = $sub !== null;
-                  $isMine      = $sub && $sub->user_id === Auth::id();
-                  $assignedIds = $task->assignedUsers->pluck('id')->toArray();
-                  $isAssigned  = empty($assignedIds) || in_array(Auth::id(), $assignedIds);
-                  $canSubmit   = !$done && $isAssigned;
-                  $subFiles    = $done ? $sub->files : collect();
-                  $imageFiles  = $subFiles->filter(fn($f) => $f->isImage());
-                  $otherFiles  = $subFiles->filter(fn($f) => !$f->isImage());
-                @endphp
+          <div x-data="{
+                 showForm: false,
+                 queue: [],
+                 addFiles(fileList) {
+                   for (const f of fileList) {
+                     this.queue.push({
+                       name: f.name,
+                       url: f.type.startsWith('image/') ? URL.createObjectURL(f) : '',
+                       file: f,
+                       isImg: f.type.startsWith('image/')
+                     });
+                   }
+                 },
+                 removeQueued(i) {
+                   if (this.queue[i].url) URL.revokeObjectURL(this.queue[i].url);
+                   this.queue.splice(i, 1);
+                 },
+                 submitForm(e) {
+                   if (this.queue.length === 0) return true;
+                   e.preventDefault();
+                   const form = e.target;
+                   const fd = new FormData(form);
+                   fd.delete('files[]');
+                   this.queue.forEach(q => fd.append('files[]', q.file, q.name));
+                   fetch(form.action, {
+                     method: 'POST',
+                     body: fd,
+                     headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' }
+                   }).then(r => { window.location.reload(); }).catch(err => { form.submit(); });
+                 }
+               }"
+               class="rounded-3xl shadow-sm overflow-hidden transition-all duration-300
+                 {{ $done ? 'bg-green-50 border-2 border-green-200' : 'bg-white border-2 border-gray-100' }}">
 
-                <tbody
-                  x-data="{
-                    showForm: false,
-                    queue: [],
-                    addFiles(fileList) {
-                      for (const f of fileList) {
-                        this.queue.push({
-                          name: f.name,
-                          url: f.type.startsWith('image/') ? URL.createObjectURL(f) : '',
-                          file: f,
-                          isImg: f.type.startsWith('image/')
-                        });
-                      }
-                      this.syncInput();
-                    },
-                    removeQueued(i) {
-                      if (this.queue[i].url) URL.revokeObjectURL(this.queue[i].url);
-                      this.queue.splice(i, 1);
-                      this.syncInput();
-                    },
-                    syncInput() {
-                      try {
-                        const dt = new DataTransfer();
-                        this.queue.forEach(q => dt.items.add(q.file));
-                        if (this.$refs.fileInput) this.$refs.fileInput.files = dt.files;
-                      } catch(e) {
-                        console.log('DataTransfer not supported, using fallback');
-                      }
-                    },
-                    handlePaste(e) {
-                      if (!this.showForm) return;
-                      const imgs = [...(e.clipboardData?.items||[])].filter(i => i.type.startsWith('image/'));
-                      if (imgs.length) {
-                        e.preventDefault();
-                        this.addFiles(imgs.map(i => i.getAsFile()));
-                      }
-                    },
-                    submitForm(e) {
-                      if (this.queue.length === 0) return true;
-                      e.preventDefault();
-                      const form = e.target;
-                      const fd = new FormData(form);
-                      fd.delete('files[]');
-                      this.queue.forEach(q => fd.append('files[]', q.file, q.name));
-                      fetch(form.action, {
-                        method: 'POST',
-                        body: fd,
-                        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' }
-                      }).then(r => { window.location.reload(); }).catch(err => { form.submit(); });
-                    }
-                  }"
-                  @paste.window="handlePaste($event)"
-                >
+            {{-- CARD HEADER --}}
+            <div class="px-5 pt-4 pb-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="flex-1 min-w-0">
+                  {{-- Status + Title --}}
+                  <div class="flex items-center gap-2.5">
+                    @if($done)
+                      <div class="w-7 h-7 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                      </div>
+                    @else
+                      <div class="w-7 h-7 rounded-full border-2 border-orange-300 bg-orange-50 flex items-center justify-center flex-shrink-0">
+                        <div class="w-2.5 h-2.5 rounded-full bg-orange-400"></div>
+                      </div>
+                    @endif
+                    <h2 class="text-base font-bold text-gray-800 leading-tight">{{ $task->title }}</h2>
+                  </div>
 
-                  {{-- DATA ROW --}}
-                  <tr class="border-b border-gray-50 hover:bg-gray-50/40 transition-colors {{ $done ? 'opacity-60' : '' }}">
-
-                    {{-- Status --}}
-                    <td class="px-4 py-3 align-middle">
-                      <div class="w-2.5 h-2.5 rounded-full mx-auto {{ $done ? 'bg-green-400' : ($canSubmit ? 'bg-amber-300' : 'bg-gray-200') }}"></div>
-                    </td>
-
-                    {{-- Task --}}
-                    <td class="px-3 py-3 align-top">
-                      <p class="font-semibold text-gray-800 leading-snug">{{ $task->title }}</p>
-                      @if($task->task_time)
-                        <span class="text-xs text-green-600">🕐 {{ \Carbon\Carbon::parse($task->task_time)->format('g:i A') }}</span>
-                      @endif
-                      @if($task->assignedUsers->count())
-                        <p class="text-xs text-indigo-400 mt-0.5">→ {{ $task->assignedUsers->pluck('name')->implode(', ') }}</p>
-                      @endif
-                      <span class="text-xs px-1.5 py-0.5 rounded-full mt-1 inline-block
-                        {{ in_array($task->type, ['photo','photo_note']) ? 'bg-blue-50 text-blue-500' : ($task->type === 'note' ? 'bg-amber-50 text-amber-500' : ($task->type === 'both' ? 'bg-purple-50 text-purple-500' : 'bg-gray-100 text-gray-400')) }}">
-                        {{ in_array($task->type, ['photo','photo_note']) ? '📸' : ($task->type === 'note' ? '📝' : ($task->type === 'both' ? '📸📝' : '📎')) }}
-                        {{ $task->type === 'photo_note' ? 'Photo + Note opt.' : ($task->type === 'both' ? 'Photo + Note' : ucfirst($task->type)) }}
+                  {{-- Time badge --}}
+                  @if($task->task_time)
+                    <div class="ml-9 mt-1">
+                      <span class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                        🕐 {{ \Carbon\Carbon::parse($task->task_time)->format('g:i A') }}
                       </span>
-                    </td>
+                    </div>
+                  @endif
+                </div>
 
-                    {{-- Description --}}
-                    <td class="px-3 py-3 text-gray-400 text-sm align-top">
-                      {{ $task->description ?: '—' }}
-                    </td>
+                {{-- Done badge --}}
+                @if($done)
+                  <span class="text-xs font-bold text-green-600 bg-green-100 px-3 py-1 rounded-full flex-shrink-0">DONE</span>
+                @else
+                  <span class="text-xs font-bold text-orange-600 bg-orange-100 px-3 py-1 rounded-full flex-shrink-0">PENDING</span>
+                @endif
+              </div>
+            </div>
 
-                    {{-- Images --}}
-                    <td class="px-3 py-3 align-top">
-                      @if($imageFiles->count() > 0)
-                        <div class="flex flex-wrap gap-1">
+            {{-- SUBMITTED CONTENT (if done) --}}
+            @if($done)
+              <div class="px-5 pb-3 space-y-2">
+                {{-- Photos --}}
+                @if($imageFiles->count() > 0)
+                  <div class="flex flex-wrap gap-2">
+                    @foreach($imageFiles as $f)
+                      <img src="{{ Storage::url($f->file_path) }}"
+                           @click="$dispatch('open-lightbox', '{{ Storage::url($f->file_path) }}')"
+                           class="w-20 h-20 object-cover rounded-2xl border border-gray-200 shadow-sm cursor-zoom-in active:scale-95 transition-transform">
+                    @endforeach
+                  </div>
+                @endif
+                {{-- Notes --}}
+                @if($sub->notes)
+                  <div class="bg-white/60 rounded-xl px-3 py-2">
+                    <p class="text-sm text-gray-600 leading-relaxed">{{ $sub->notes }}</p>
+                  </div>
+                @endif
+                {{-- Submitted info --}}
+                <div class="flex items-center gap-2 text-xs text-gray-400">
+                  <div class="w-5 h-5 rounded-full bg-green-200 flex items-center justify-center text-xs font-bold text-green-700 flex-shrink-0">
+                    {{ strtoupper(substr($sub->user->name ?? '?', 0, 1)) }}
+                  </div>
+                  <span>{{ $sub->user->name ?? 'Unknown' }} · {{ $sub->created_at->format('g:i A') }}</span>
+                </div>
+              </div>
+            @endif
+
+            {{-- ACTION BUTTONS --}}
+            <div class="px-5 pb-4">
+              @if($canSubmit)
+                <button @click="showForm = !showForm"
+                        class="w-full py-3.5 rounded-2xl font-bold text-base transition-all duration-200
+                          bg-blue-600 text-white active:bg-blue-700 active:scale-[0.98] shadow-lg shadow-blue-200">
+                  📸 Submit Task
+                </button>
+              @elseif($done && ($isMine || $isAdmin))
+                <button @click="showForm = !showForm"
+                        class="w-full py-2.5 rounded-2xl font-semibold text-sm transition-all duration-200
+                          bg-white border-2 border-gray-200 text-gray-600 active:bg-gray-50 active:scale-[0.98]"
+                        x-text="showForm ? 'Close' : '✏️ Edit Submission'">
+                  ✏️ Edit Submission
+                </button>
+              @endif
+            </div>
+
+            {{-- ===== SUBMISSION FORM ===== --}}
+            @if($canSubmit || ($done && ($isMine || $isAdmin)))
+              <div x-show="showForm" x-transition.duration.200ms
+                   class="border-t-2 {{ $done ? 'border-green-200 bg-green-50/50' : 'border-blue-100 bg-blue-50/30' }} px-5 py-5">
+                <form method="POST" action="{{ route('checklist.submit', $task) }}" enctype="multipart/form-data" class="space-y-4" @submit="submitForm($event)">
+                  @csrf
+
+                  {{-- PHOTO UPLOAD AREA --}}
+                  @if(in_array($task->type, ['photo', 'any', 'both', 'photo_note']))
+                    <div>
+                      <label class="block text-sm font-bold text-gray-700 mb-2">
+                        📸 Photos
+                        @if(in_array($task->type, ['photo', 'both', 'photo_note']))
+                          <span class="text-red-500">*</span>
+                        @endif
+                      </label>
+
+                      {{-- Existing photos (edit mode) --}}
+                      @if($done && $imageFiles->count() > 0)
+                        <div class="flex flex-wrap gap-2 mb-3">
                           @foreach($imageFiles as $f)
-                            <div class="relative group">
-                              <img src="{{ Storage::url($f->file_path) }}"
-                                   @click="$dispatch('open-lightbox', '{{ Storage::url($f->file_path) }}')"
-                                   class="w-14 h-14 object-cover rounded-lg border border-gray-100 hover:opacity-80 transition shadow-sm cursor-zoom-in"
-                                   alt="{{ $f->file_original_name }}">
+                            <div class="relative">
+                              <img src="{{ Storage::url($f->file_path) }}" class="w-20 h-20 object-cover rounded-2xl border border-gray-200 shadow-sm">
                               @if($isMine || $isAdmin)
-                                <form method="POST" action="{{ route('checklist.delete-file', $f) }}"
-                                      onsubmit="return confirm('Remove this image?')"
-                                      class="absolute -top-1.5 -right-1.5 transition"
-                                      x-show="showForm">
+                                <form method="POST" action="{{ route('checklist.delete-file', $f) }}" onsubmit="return confirm('Remove this photo?')" class="absolute -top-2 -right-2">
                                   @csrf @method('DELETE')
-                                  <button type="submit"
-                                          class="w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs flex items-center justify-center shadow leading-none">✕</button>
+                                  <button type="submit" class="w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center shadow-lg font-bold">✕</button>
                                 </form>
                               @endif
                             </div>
                           @endforeach
                         </div>
-                        @foreach($otherFiles as $f)
-                          <div class="relative group inline-flex items-center gap-1 mt-1">
-                            <a href="{{ Storage::url($f->file_path) }}" target="_blank"
-                               class="text-xs text-blue-500 hover:underline flex items-center gap-1">
-                              📎 <span class="truncate max-w-[80px]">{{ $f->file_original_name }}</span>
-                            </a>
-                            @if($isMine || $isAdmin)
-                              <form method="POST" action="{{ route('checklist.delete-file', $f) }}"
-                                    onsubmit="return confirm('Remove this file?')"
-                                    x-show="showForm">
-                                @csrf @method('DELETE')
-                                <button type="submit" class="text-xs text-red-400 hover:text-red-600">✕</button>
-                              </form>
-                            @endif
-                          </div>
-                        @endforeach
-                      @elseif($done && $sub->file_path)
-                        @if($sub->isImage())
-                          <img src="{{ Storage::url($sub->file_path) }}"
-                               @click="$dispatch('open-lightbox', '{{ Storage::url($sub->file_path) }}')"
-                               class="w-14 h-14 object-cover rounded-lg border border-gray-100 hover:opacity-80 transition shadow-sm cursor-zoom-in">
-                        @else
-                          <a href="{{ Storage::url($sub->file_path) }}" target="_blank"
-                             class="text-xs text-blue-500 hover:underline">📎 {{ $sub->file_original_name }}</a>
-                        @endif
-                      @else
-                        <span class="text-gray-200">—</span>
                       @endif
-                    </td>
 
-                    {{-- Notes --}}
-                    <td class="px-3 py-3 align-top">
-                      @if($done && $sub->notes)
-                        <p class="text-sm text-gray-600 leading-relaxed line-clamp-3">{{ $sub->notes }}</p>
-                      @else
-                        <span class="text-gray-200">—</span>
-                      @endif
-                    </td>
-
-                    {{-- Submitted by --}}
-                    <td class="px-3 py-3 align-top">
-                      @if($done)
-                        @php
-                          $editLogs  = $sub->logs->where('action', 'updated');
-                          $lastEdit  = $editLogs->first();
-                          $editCount = $editLogs->count();
-                        @endphp
-                        <div class="flex items-center gap-2">
-                          <div class="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 flex-shrink-0">
-                            {{ strtoupper(substr($sub->user->name ?? '?', 0, 1)) }}
-                          </div>
-                          <div>
-                            <p class="text-xs font-semibold text-gray-700 leading-none">{{ $sub->user->name ?? 'Unknown' }}</p>
-                            <p class="text-xs text-gray-400 leading-none mt-0.5">{{ $sub->created_at->format('h:i A') }}</p>
-                          </div>
-                        </div>
-                        @if($lastEdit)
-                          <div class="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-gray-100">
-                            <div class="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-xs font-bold text-amber-600 flex-shrink-0">
-                              {{ strtoupper(substr($lastEdit->user->name ?? '?', 0, 1)) }}
-                            </div>
-                            <div>
-                              <p class="text-xs text-amber-600 leading-none">edited by {{ $lastEdit->user->name ?? 'Unknown' }}</p>
-                              <p class="text-xs text-gray-400 leading-none mt-0.5">
-                                {{ \Carbon\Carbon::parse($lastEdit->created_at)->format('h:i A') }}
-                                {{ $editCount > 1 ? '&middot; '.$editCount.' edits' : '' }}
-                              </p>
-                            </div>
-                          </div>
-                        @endif
-                      @else
-                        <span class="text-gray-200">—</span>
-                      @endif
-                    </td>
-
-                    {{-- Actions --}}
-                    <td class="px-3 py-3 align-middle">
-                      <div class="flex items-center gap-1 justify-end">
-                        @if($canSubmit)
-                          <button @click="showForm = !showForm"
-                                  class="text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition font-medium">
-                            + Submit
-                          </button>
-                        @endif
-                        @if($done)
-                          <button @click="showForm = !showForm"
-                                  class="text-xs px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition">
-                            Edit
-                          </button>
-                        @endif
-                        @if($done && ($isMine || $isAdmin))
-                          <form method="POST" action="{{ route('checklist.delete-submission', $sub) }}"
-                                onsubmit="return confirm('Remove entire submission?')">
-                            @csrf @method('DELETE')
-                            <button type="submit"
-                                    class="text-xs px-2 py-1.5 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 transition">✕</button>
-                          </form>
-                        @endif
-                        @if(!$isAssigned && !$done)
-                          <span class="text-xs text-gray-300 italic">Not yours</span>
-                        @endif
-                      </div>
-                    </td>
-                  </tr>
-
-                  {{-- INLINE FORM ROW (Desktop) --}}
-                  @if($canSubmit || $done)
-                    <tr x-show="showForm" x-transition class="border-b border-blue-100 bg-blue-50/20">
-                      <td colspan="7" class="px-6 py-4">
-                        <form method="POST" action="{{ route('checklist.submit', $task) }}" enctype="multipart/form-data" @submit="submitForm($event)">
-                          @csrf
-                          <div class="flex gap-4 items-start flex-wrap">
-
-                            {{-- Notes --}}
-                            @if(in_array($task->type, ['note', 'any', 'both', 'photo_note']))
-                              <div class="flex-1 min-w-[200px]">
-                                <label class="block text-xs font-medium text-gray-500 mb-1">
-                                  Notes {!! $task->type === 'both' ? '<span class="text-red-400">*</span>' : '' !!}
-                                </label>
-                                <textarea name="notes" rows="3" placeholder="Add notes or remarks..."
-                                          class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white">{{ $sub?->notes }}</textarea>
-                              </div>
-                            @endif
-
-                            {{-- Upload zone --}}
-@if(in_array($task->type, ['photo', 'any', 'both', 'photo_note']))
-                              <div class="flex-shrink-0 min-w-[240px]">
-                                <label class="block text-xs font-medium text-gray-500 mb-1">
-                                  @if(in_array($task->type, ['both', 'photo_note'])) Photos <span class="text-red-400">*</span>
-                                  @elseif($task->type === 'photo') Photos (required)
-                                  @else Images / Files (optional)
-                                  @endif
-                                  <span class="text-gray-300">· up to 10 files</span>
-                                </label>
-
-                                <div
-                                  @click="$refs.fileInput.click()"
-                                  @dragover.prevent="$el.classList.add('!border-blue-400','!bg-blue-50')"
-                                  @dragleave.prevent="$el.classList.remove('!border-blue-400','!bg-blue-50')"
-                                  @drop.prevent="
-                                    $el.classList.remove('!border-blue-400','!bg-blue-50');
-                                    addFiles($event.dataTransfer.files);
-                                  "
-                                  class="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50/40 transition-colors mb-2"
-                                >
-                                  <p class="text-xl mb-1">📸</p>
-                                  <p class="text-xs text-gray-400">Click, drag, or <span class="font-semibold text-blue-400">Ctrl+V</span> to paste</p>
-                                  <p class="text-xs text-gray-300 mt-0.5">Multiple files supported</p>
+                      {{-- New photo queue --}}
+                      <template x-if="queue.length > 0">
+                        <div class="flex flex-wrap gap-2 mb-3">
+                          <template x-for="(item, i) in queue" :key="i">
+                            <div class="relative">
+                              <template x-if="item.isImg">
+                                <img :src="item.url" class="w-20 h-20 object-cover rounded-2xl border-2 border-blue-200 shadow-sm">
+                              </template>
+                              <template x-if="!item.isImg">
+                                <div class="w-20 h-20 flex flex-col items-center justify-center rounded-2xl border-2 border-blue-200 bg-blue-50 text-xs text-blue-500">
+                                  <span class="text-2xl">📎</span>
+                                  <span class="truncate w-full text-center px-1" x-text="item.name.split('.').pop().toUpperCase()"></span>
                                 </div>
-
-                                <input type="file" x-ref="fileInput" name="files[]" class="hidden"
-                                       multiple
-                                       accept="{{ in_array($task->type, ['photo','both','photo_note']) ? 'image/*' : 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv' }}"
-                                       capture="environment"
-                                       @change="addFiles($event.target.files)">
-
-                                <template x-if="queue.length > 0">
-                                  <div class="flex flex-wrap gap-2 mt-2">
-                                    <template x-for="(item, i) in queue" :key="i">
-                                      <div class="relative group">
-                                        <template x-if="item.isImg">
-                                          <img :src="item.url" class="w-16 h-16 object-cover rounded-lg border border-gray-200 shadow-sm">
-                                        </template>
-                                        <template x-if="!item.isImg">
-                                          <div class="w-16 h-16 flex flex-col items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-400 text-center px-1">
-                                            <span class="text-xl">📎</span>
-                                            <span class="truncate w-full text-center leading-tight" x-text="item.name.split('.').pop().toUpperCase()"></span>
-                                          </div>
-                                        </template>
-                                        <button type="button" @click.stop="removeQueued(i)"
-                                                class="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs flex items-center justify-center shadow opacity-0 group-hover:opacity-100 transition">✕</button>
-                                      </div>
-                                    </template>
-                                    <button type="button" @click="$refs.fileInput.click()"
-                                            class="w-16 h-16 border-2 border-dashed border-gray-200 rounded-lg flex items-center justify-center text-gray-300 hover:border-blue-300 hover:text-blue-400 transition text-2xl">+</button>
-                                  </div>
-                                </template>
-                              </div>
-                            @endif
-
-                            {{-- Buttons --}}
-                            <div class="flex flex-col gap-2 justify-end" style="padding-top: 1.35rem">
-                              <button type="submit"
-                                      class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-xl font-semibold transition">
-                                {{ $sub ? 'Update' : 'Submit' }}
-                              </button>
-                              <button type="button" @click="showForm = false; queue = [];"
-                                      class="px-5 py-2 text-sm text-gray-400 hover:text-gray-600 rounded-xl hover:bg-gray-100 transition text-center">
-                                Cancel
-                              </button>
+                              </template>
+                              <button type="button" @click.stop="removeQueued(i)"
+                                      class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center shadow-lg font-bold">✕</button>
                             </div>
-
-                          </div>
-                        </form>
-                      </td>
-                    </tr>
-                  @endif
-
-                </tbody>
-              @endforeach
-            </table>
-          </div>
-
-          @if($doneCount === $totalTasks && $totalTasks > 0)
-            <div class="px-6 py-3 border-t border-gray-100 bg-green-50/50 text-center">
-              <p class="text-sm text-green-600 font-semibold">🎉 All tasks completed for today!</p>
-            </div>
-          @endif
-        </div>
-
-        {{-- ===== MOBILE CARD VIEW ===== --}}
-        <div class="md:hidden space-y-3">
-          @foreach($sortedTasks as $task)
-            @php
-              $sub         = $submissionsByTask->get($task->id);
-              $done        = $sub !== null;
-              $isMine      = $sub && $sub->user_id === Auth::id();
-              $assignedIds = $task->assignedUsers->pluck('id')->toArray();
-              $isAssigned  = empty($assignedIds) || in_array(Auth::id(), $assignedIds);
-              $canSubmit   = !$done && $isAssigned;
-              $subFiles    = $done ? $sub->files : collect();
-              $imageFiles  = $subFiles->filter(fn($f) => $f->isImage());
-              $otherFiles  = $subFiles->filter(fn($f) => !$f->isImage());
-            @endphp
-
-            <div class="bg-white rounded-xl border {{ $done ? 'border-green-200' : 'border-gray-200' }} shadow-sm overflow-hidden {{ $done ? 'opacity-70' : '' }}"
-                 x-data="{
-                   showForm: false,
-                   queue: [],
-                   addFiles(fileList) {
-                     for (const f of fileList) {
-                       this.queue.push({
-                         name: f.name,
-                         url: f.type.startsWith('image/') ? URL.createObjectURL(f) : '',
-                         file: f,
-                         isImg: f.type.startsWith('image/')
-                       });
-                     }
-                     this.syncInput();
-                   },
-                   removeQueued(i) {
-                     if (this.queue[i].url) URL.revokeObjectURL(this.queue[i].url);
-                     this.queue.splice(i, 1);
-                     this.syncInput();
-                   },
-                   syncInput() {
-                     try {
-                       const dt = new DataTransfer();
-                       this.queue.forEach(q => dt.items.add(q.file));
-                       if (this.$refs.mobileFileInput) this.$refs.mobileFileInput.files = dt.files;
-                     } catch(e) {
-                       console.log('DataTransfer not supported, using fallback');
-                     }
-                   },
-                   submitForm(e) {
-                     if (this.queue.length === 0) return true;
-                     e.preventDefault();
-                     const form = e.target;
-                     const fd = new FormData(form);
-                     fd.delete('files[]');
-                     this.queue.forEach(q => fd.append('files[]', q.file, q.name));
-                     fetch(form.action, {
-                       method: 'POST',
-                       body: fd,
-                       headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' }
-                     }).then(r => { window.location.reload(); }).catch(err => { form.submit(); });
-                   }
-                 }">
-
-              {{-- Card Header --}}
-              <div class="px-4 py-3 flex items-start justify-between gap-2">
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-2">
-                    <div class="w-2.5 h-2.5 rounded-full flex-shrink-0 {{ $done ? 'bg-green-400' : ($canSubmit ? 'bg-amber-300' : 'bg-gray-200') }}"></div>
-                    <h3 class="font-semibold text-gray-800 text-sm leading-snug">{{ $task->title }}</h3>
-                  </div>
-                  <div class="flex items-center flex-wrap gap-1.5 mt-1 ml-4">
-                    @if($task->task_time)
-                      <span class="text-xs text-green-600">🕐 {{ \Carbon\Carbon::parse($task->task_time)->format('g:i A') }}</span>
-                    @endif
-                    <span class="text-xs px-1.5 py-0.5 rounded-full
-                      {{ in_array($task->type, ['photo','photo_note']) ? 'bg-blue-50 text-blue-500' : ($task->type === 'note' ? 'bg-amber-50 text-amber-500' : ($task->type === 'both' ? 'bg-purple-50 text-purple-500' : 'bg-gray-100 text-gray-400')) }}">
-                      {{ in_array($task->type, ['photo','photo_note']) ? '📸' : ($task->type === 'note' ? '📝' : ($task->type === 'both' ? '📸📝' : '📎')) }}
-                      {{ $task->type === 'photo_note' ? 'Photo + Note opt.' : ($task->type === 'both' ? 'Photo + Note' : ucfirst($task->type)) }}
-                    </span>
-                    @if($done)
-                      <span class="text-xs text-green-500 font-medium">✓ Done</span>
-                    @endif
-                  </div>
-                  @if($task->description)
-                    <p class="text-xs text-gray-400 mt-1 ml-4">{{ $task->description }}</p>
-                  @endif
-                </div>
-
-                {{-- Mobile Actions --}}
-                <div class="flex items-center gap-1 flex-shrink-0">
-                  @if($canSubmit)
-                    <button @click="showForm = !showForm"
-                            class="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition font-medium">
-                      Submit
-                    </button>
-                  @endif
-                  @if($done)
-                    <button @click="showForm = !showForm"
-                            class="text-xs px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition">
-                      Edit
-                    </button>
-                  @endif
-                </div>
-              </div>
-
-              {{-- Submission info (if done) --}}
-              @if($done)
-                <div class="px-4 pb-3 space-y-2">
-                  {{-- Images --}}
-                  @if($imageFiles->count() > 0)
-                    <div class="flex flex-wrap gap-1.5">
-                      @foreach($imageFiles as $f)
-                        <img src="{{ Storage::url($f->file_path) }}"
-                             @click="$dispatch('open-lightbox', '{{ Storage::url($f->file_path) }}')"
-                             class="w-16 h-16 object-cover rounded-lg border border-gray-100 shadow-sm cursor-zoom-in">
-                      @endforeach
-                    </div>
-                  @endif
-                  {{-- Notes --}}
-                  @if($sub->notes)
-                    <p class="text-sm text-gray-600 leading-relaxed">{{ $sub->notes }}</p>
-                  @endif
-                  {{-- Submitted by --}}
-                  <div class="flex items-center gap-2 text-xs text-gray-400">
-                    <div class="w-5 h-5 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 flex-shrink-0">
-                      {{ strtoupper(substr($sub->user->name ?? '?', 0, 1)) }}
-                    </div>
-                    <span>{{ $sub->user->name ?? 'Unknown' }} · {{ $sub->created_at->format('h:i A') }}</span>
-                  </div>
-                </div>
-              @endif
-
-              {{-- Mobile Form --}}
-              @if($canSubmit || $done)
-                <div x-show="showForm" x-transition class="border-t border-blue-100 bg-blue-50/30 px-4 py-4">
-                  <form method="POST" action="{{ route('checklist.submit', $task) }}" enctype="multipart/form-data" class="space-y-3" @submit="submitForm($event)">
-                    @csrf
-
-                    @if(in_array($task->type, ['note', 'any', 'both', 'photo_note']))
-                      <div>
-                        <label class="block text-xs font-medium text-gray-500 mb-1">
-                          Notes {!! $task->type === 'both' ? '<span class="text-red-400">*</span>' : '' !!}
-                        </label>
-                        <textarea name="notes" rows="3" placeholder="Add notes or remarks..."
-                                  class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white">{{ $sub?->notes }}</textarea>
-                      </div>
-                    @endif
-
-@if(in_array($task->type, ['photo', 'any', 'both', 'photo_note']))
-                      <div>
-                        <label class="block text-xs font-medium text-gray-500 mb-1">
-                          @if(in_array($task->type, ['both', 'photo_note'])) Photos <span class="text-red-400">*</span>
-                          @elseif($task->type === 'photo') Photos (required)
-                          @else Images / Files (optional)
-                          @endif
-                        </label>
-
-                        {{-- Camera button for mobile --}}
-                        <div class="flex gap-2 mb-2">
-                          <button type="button" @click="$refs.mobileFileInput.click()"
-                                  class="flex-1 border-2 border-dashed border-gray-200 rounded-xl py-3 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50/40 transition-colors">
-                            <p class="text-2xl mb-1">📸</p>
-                            <p class="text-xs text-gray-400">Take Photo / Upload</p>
-                          </button>
+                          </template>
                         </div>
+                      </template>
 
-                        <input type="file" x-ref="mobileFileInput" name="files[]" class="hidden"
-                               multiple
-                               accept="{{ in_array($task->type, ['photo','both','photo_note']) ? 'image/*' : 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv' }}"
-                               capture="environment"
-                               @change="addFiles($event.target.files)">
-
-                        <template x-if="queue.length > 0">
-                          <div class="flex flex-wrap gap-2">
-                            <template x-for="(item, i) in queue" :key="i">
-                              <div class="relative">
-                                <template x-if="item.isImg">
-                                  <img :src="item.url" class="w-16 h-16 object-cover rounded-lg border border-gray-200 shadow-sm">
-                                </template>
-                                <template x-if="!item.isImg">
-                                  <div class="w-16 h-16 flex flex-col items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-400 text-center px-1">
-                                    <span class="text-xl">📎</span>
-                                    <span class="truncate w-full text-center leading-tight" x-text="item.name.split('.').pop().toUpperCase()"></span>
-                                  </div>
-                                </template>
-                                <button type="button" @click.stop="removeQueued(i)"
-                                        class="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center shadow">✕</button>
-                              </div>
-                            </template>
-                          </div>
-                        </template>
+                      {{-- Add Photo Buttons --}}
+                      <div class="grid grid-cols-2 gap-2">
+                        <button type="button" @click="$refs.cameraInput{{ $task->id }}.click()"
+                                class="py-4 rounded-2xl border-2 border-dashed border-blue-300 bg-blue-50 text-center active:bg-blue-100 active:scale-[0.98] transition-all">
+                          <p class="text-3xl">📷</p>
+                          <p class="text-xs font-bold text-blue-600 mt-1">Take Photo</p>
+                        </button>
+                        <button type="button" @click="$refs.galleryInput{{ $task->id }}.click()"
+                                class="py-4 rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 text-center active:bg-gray-100 active:scale-[0.98] transition-all">
+                          <p class="text-3xl">🖼️</p>
+                          <p class="text-xs font-bold text-gray-600 mt-1">From Gallery</p>
+                        </button>
                       </div>
-                    @endif
 
-                    <div class="flex gap-2">
-                      <button type="submit"
-                              class="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-xl font-semibold transition">
-                        {{ $sub ? 'Update' : 'Submit' }}
-                      </button>
-                      <button type="button" @click="showForm = false; queue = [];"
-                              class="px-4 py-2.5 text-sm text-gray-400 rounded-xl hover:bg-gray-100 transition">
-                        Cancel
-                      </button>
+                      {{-- Hidden file inputs --}}
+                      <input type="file" x-ref="cameraInput{{ $task->id }}" name="files[]" class="hidden"
+                             accept="image/*" capture="environment"
+                             @change="addFiles($event.target.files); $event.target.value='';">
+                      <input type="file" x-ref="galleryInput{{ $task->id }}" name="files[]" class="hidden"
+                             multiple accept="{{ in_array($task->type, ['photo','both','photo_note']) ? 'image/*' : 'image/*,.pdf,.doc,.docx' }}"
+                             @change="addFiles($event.target.files); $event.target.value='';">
                     </div>
+                  @endif
 
-                    @if($done && ($isMine || $isAdmin))
+                  {{-- NOTES --}}
+                  @if(in_array($task->type, ['note', 'any', 'both', 'photo_note']))
+                    <div>
+                      <label class="block text-sm font-bold text-gray-700 mb-2">
+                        📝 Notes
+                        @if($task->type === 'both')
+                          <span class="text-red-500">*</span>
+                        @else
+                          <span class="text-gray-400 font-normal text-xs">(optional)</span>
+                        @endif
+                      </label>
+                      <textarea name="notes" rows="3" placeholder="Add notes or remarks..."
+                                class="w-full border-2 border-gray-200 rounded-2xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300 bg-white">{{ $sub?->notes }}</textarea>
+                    </div>
+                  @endif
+
+                  {{-- SUBMIT BUTTON --}}
+                  <button type="submit"
+                          class="w-full py-4 rounded-2xl font-bold text-base transition-all duration-200
+                            bg-green-500 text-white active:bg-green-600 active:scale-[0.98] shadow-lg shadow-green-200">
+                    ✅ {{ $sub ? 'Update Submission' : 'Submit Task' }}
+                  </button>
+
+                  {{-- Cancel --}}
+                  <button type="button" @click="showForm = false; queue = [];"
+                          class="w-full py-2.5 rounded-2xl text-sm text-gray-400 hover:bg-gray-100 transition font-medium">
+                    Cancel
+                  </button>
+
+                  {{-- Delete submission --}}
+                  @if($done && ($isMine || $isAdmin))
+                    <div class="text-center pt-1">
                       <form method="POST" action="{{ route('checklist.delete-submission', $sub) }}"
-                            onsubmit="return confirm('Remove entire submission?')" class="pt-1">
+                            onsubmit="return confirm('Remove entire submission?')">
                         @csrf @method('DELETE')
-                        <button type="submit" class="text-xs text-red-400 hover:text-red-600">Remove submission</button>
+                        <button type="submit" class="text-xs text-red-400 hover:text-red-600 underline">Remove submission</button>
                       </form>
-                    @endif
-                  </form>
-                </div>
-              @endif
-            </div>
-          @endforeach
+                    </div>
+                  @endif
+                </form>
+              </div>
+            @endif
+          </div>
+        @endforeach
 
-          @if($doneCount === $totalTasks && $totalTasks > 0)
-            <div class="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-center">
-              <p class="text-sm text-green-600 font-semibold">🎉 All tasks completed for today!</p>
-            </div>
-          @endif
-        </div>
+        {{-- All done message --}}
+        @if($doneCount === $totalTasks && $totalTasks > 0)
+          <div class="bg-green-100 border-2 border-green-300 rounded-3xl px-6 py-5 text-center">
+            <p class="text-3xl mb-2">🎉</p>
+            <p class="text-base font-bold text-green-700">All tasks completed!</p>
+            <p class="text-sm text-green-600 mt-1">Great job for today.</p>
+          </div>
+        @endif
       @endif
     </div>
   </div>
@@ -671,29 +367,29 @@
        style="display:none">
 
     <button @click="lightbox = false"
-            class="absolute top-4 right-4 w-9 h-9 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-lg transition z-10">✕</button>
+            class="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-xl transition z-10">✕</button>
 
     <template x-if="images.length > 1">
-      <div class="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-3 py-1 rounded-full z-10"
+      <div class="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white text-sm px-4 py-1.5 rounded-full z-10"
            x-text="(currentIndex + 1) + ' / ' + images.length"></div>
     </template>
 
     <template x-if="images.length > 1">
       <button @click.stop="prev()"
               :class="currentIndex === 0 ? 'opacity-20 pointer-events-none' : 'opacity-80 hover:opacity-100'"
-              class="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-xl transition z-10">
+              class="absolute left-3 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-2xl transition z-10">
         ‹
       </button>
     </template>
 
     <img :src="lightSrc"
-         class="max-w-full max-h-full rounded-xl shadow-2xl object-contain"
+         class="max-w-full max-h-full rounded-2xl shadow-2xl object-contain"
          @click.stop>
 
     <template x-if="images.length > 1">
       <button @click.stop="next()"
               :class="currentIndex === images.length - 1 ? 'opacity-20 pointer-events-none' : 'opacity-80 hover:opacity-100'"
-              class="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-xl transition z-10">
+              class="absolute right-3 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-2xl transition z-10">
         ›
       </button>
     </template>
