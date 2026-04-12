@@ -87,6 +87,7 @@
       @else
 
         {{-- ===== PENDING TASK CARDS ===== --}}
+        <div id="pending-tasks-container">
         @foreach($pendingTasks as $task)
           @php
             $assignedIds = $task->assignedUsers->pluck('id')->toArray();
@@ -120,29 +121,30 @@
                 <button @click="setFocus({{ $task->id }})"
                         class="w-full py-3.5 rounded-2xl font-bold text-base transition-all duration-200
                           text-white active:scale-[0.98] shadow-lg" style="background-color:#1877F2; box-shadow: 0 10px 15px -3px rgba(24,119,242,0.3)">
-                  📸 Upload Photo
+                  📸 Update
                 </button>
               </div>
             @endif
           </div>
         @endforeach
+        </div>
 
         {{-- ===== COMPLETED TASKS (COLLAPSED) ===== --}}
         @if($doneTasks->count() > 0)
-          <div class="mt-4">
+          <div class="mt-4" id="completed-section-wrapper">
             <button @click="showCompleted = !showCompleted"
                     class="w-full flex items-center justify-between px-5 py-3.5 rounded-2xl bg-green-50 border-2 border-green-200 text-green-700 font-bold text-sm transition-all active:scale-[0.98]">
               <span class="flex items-center gap-2">
                 <span class="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
                   <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                 </span>
-                Completed ({{ $doneTasks->count() }})
+                <span data-poll-completed-count>Completed ({{ $doneTasks->count() }})</span>
               </span>
               <svg class="w-5 h-5 transition-transform duration-200" :class="showCompleted ? 'rotate-180' : ''"
                    fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
             </button>
 
-            <div x-show="showCompleted" x-collapse class="space-y-3 mt-3">
+            <div x-show="showCompleted" x-collapse class="space-y-3 mt-3" id="completed-tasks-container">
               @foreach($doneTasks as $task)
                 @php
                   $sub        = $submissionsByTask->get($task->id);
@@ -248,7 +250,7 @@
              x-data="{
                uploading: false,
                sendingNote: false,
-               noteText: '{{ $sub?->notes ? addslashes($sub->notes) : '' }}',
+               noteText: '',
                sentPhotos: [
                  @if($done || $reverted)
                    @foreach($imageFiles as $f)
@@ -739,6 +741,14 @@
       const POLL_INTERVAL = 5000;
       const POLL_URL = '{{ route("checklist.poll-status") }}';
 
+      // Track known statuses
+      const knownStatuses = {};
+      document.querySelectorAll('[data-poll-task]').forEach(card => {
+          const tid = card.dataset.pollTask;
+          const badge = card.querySelector('[data-poll-status]');
+          knownStatuses[tid] = badge ? badge.dataset.pollStatus : 'pending';
+      });
+
       async function poll() {
           try {
               const resp = await fetch(POLL_URL, {
@@ -751,44 +761,93 @@
               // Update progress counter
               const counterEl = document.querySelector('[data-poll-counter]');
               if (counterEl) {
-                  counterEl.textContent = data.done_count + '/' + data.total + ' Done';
+                  counterEl.textContent = data.done_count + '/' + data.total;
               }
 
-              // Update each task's status badge
+              const pendingContainer = document.getElementById('pending-tasks-container');
+              const completedContainer = document.getElementById('completed-tasks-container');
+              const completedWrapper = document.getElementById('completed-section-wrapper');
+              const completedCountEl = document.querySelector('[data-poll-completed-count]');
+
+              let needsMove = false;
+
               data.tasks.forEach(t => {
-                  const card = document.querySelector('[data-poll-task="' + t.task_id + '"]');
+                  const card = document.querySelector('[data-poll-task="' + t.task_id + '"');
                   if (!card) return;
 
+                  const oldStatus = knownStatuses[t.task_id] || 'pending';
+                  const newStatus = t.status;
+
+                  if (oldStatus === newStatus) return;
+
+                  knownStatuses[t.task_id] = newStatus;
+                  needsMove = true;
+
                   const badge = card.querySelector('[data-poll-status]');
-                  if (badge) {
-                      const oldStatus = badge.dataset.pollStatus;
-                      if (oldStatus !== t.status) {
-                          badge.dataset.pollStatus = t.status;
-                          // Update badge appearance
-                          if (t.status === 'completed') {
+
+                  // CASE 1: Task was completed, now reverted → move to pending
+                  if (oldStatus === 'completed' && (newStatus === 'pending' || newStatus === 'reverted')) {
+                      // Restyle card as pending
+                      card.className = 'rounded-3xl shadow-sm overflow-hidden bg-white border-2 border-blue-300';
+                      if (badge) {
+                          badge.dataset.pollStatus = 'pending';
+                          badge.className = 'text-xs font-bold text-blue-700 bg-blue-100 px-3 py-1 rounded-full flex-shrink-0';
+                          badge.textContent = 'PENDING';
+                      }
+                      // Move card to pending container
+                      if (pendingContainer) {
+                          card.style.transition = 'background-color 0.5s';
+                          card.style.backgroundColor = '#FFF7ED';
+                          pendingContainer.appendChild(card);
+                          setTimeout(() => { card.style.backgroundColor = ''; }, 2000);
+                      }
+                  }
+                  // CASE 2: Task was pending, now completed → move to completed
+                  else if ((oldStatus === 'pending' || oldStatus === 'reverted') && newStatus === 'completed') {
+                      // Restyle card as completed
+                      card.className = 'rounded-3xl shadow-sm overflow-hidden bg-green-50 border-2 border-green-200';
+                      if (badge) {
+                          badge.dataset.pollStatus = 'completed';
+                          badge.className = 'text-xs font-bold text-green-600 bg-green-100 px-2.5 py-0.5 rounded-full';
+                          badge.textContent = 'DONE';
+                      }
+                      // Move card to completed container (create if needed)
+                      if (completedContainer) {
+                          completedContainer.appendChild(card);
+                      }
+                      // Show completed section if it was hidden
+                      if (completedWrapper) {
+                          completedWrapper.style.display = '';
+                      }
+                  }
+                  // CASE 3: Other status changes (just update badge)
+                  else {
+                      if (badge) {
+                          badge.dataset.pollStatus = newStatus;
+                          if (newStatus === 'completed') {
                               badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700';
                               badge.textContent = 'DONE';
-                          } else if (t.status === 'reverted') {
+                          } else if (newStatus === 'reverted') {
                               badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700';
                               badge.textContent = 'REVERTED';
-                          } else if (t.status === 'submitted') {
-                              badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700';
-                              badge.textContent = 'SUBMITTED';
                           } else {
-                              badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500';
+                              badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700';
                               badge.textContent = 'PENDING';
-                          }
-
-                          // If status changed to reverted, show a subtle flash
-                          if (t.status === 'reverted' && oldStatus === 'completed') {
-                              card.style.transition = 'background-color 0.5s';
-                              card.style.backgroundColor = '#FFF7ED';
-                              setTimeout(() => { card.style.backgroundColor = ''; }, 2000);
                           }
                       }
                   }
+              });
 
-                  // Update comment count
+              // Update completed count label
+              if (needsMove && completedContainer && completedCountEl) {
+                  const completedCount = completedContainer.children.length;
+                  completedCountEl.textContent = 'Completed (' + completedCount + ')';
+              }
+
+              // Update comment counts
+              data.tasks.forEach(t => {
+                  const card = document.querySelector('[data-poll-task="' + t.task_id + '"');
+                  if (!card) return;
                   const commentBadge = card.querySelector('[data-poll-comments]');
                   if (commentBadge) {
                       if (t.comment_count > 0) {

@@ -303,7 +303,7 @@
                        data-lightbox-src="{{ Storage::url($task->reference_image) }}"
                        data-lightbox-sender="Reference Photo"
                        data-lightbox-time="{{ $task->created_at->format('M d, Y') }}"
-                       @click.stop="$dispatch('open-lightbox', '{{ Storage::url($task->reference_image) }}')"
+                       @click.stop="$dispatch('open-lightbox', { src: '{{ Storage::url($task->reference_image) }}', taskId: {{ $task->id }} })"
                        class="max-h-48 rounded-xl border border-amber-200 shadow-sm cursor-zoom-in hover:opacity-90 transition">
                 @endif
                 @foreach($refFiles as $rf)
@@ -315,7 +315,7 @@
                          data-lightbox-src="{{ Storage::url($rf->file_path) }}"
                          data-lightbox-sender="Reference Photo"
                          data-lightbox-time="{{ $task->created_at->format('M d, Y') }}"
-                         @click.stop="$dispatch('open-lightbox', '{{ Storage::url($rf->file_path) }}')"
+                         @click.stop="$dispatch('open-lightbox', { src: '{{ Storage::url($rf->file_path) }}', taskId: {{ $task->id }} })"
                          class="max-h-48 rounded-xl border border-amber-200 shadow-sm cursor-zoom-in hover:opacity-90 transition">
                   @endif
                 @endforeach
@@ -366,7 +366,7 @@
                                data-lightbox-src="{{ Storage::url($batchFiles->first()->file_path) }}"
                                data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
                                data-lightbox-time="{{ $batchFiles->first()->created_at->format('M d, Y \u00b7 g:i A') }}"
-                               @click="$dispatch('open-lightbox', '{{ Storage::url($batchFiles->first()->file_path) }}')"
+                               @click="$dispatch('open-lightbox', { src: '{{ Storage::url($batchFiles->first()->file_path) }}', taskId: {{ $task->id }} })"
                                class="w-56 h-56 object-cover cursor-zoom-in hover:opacity-90 transition">
                         </div>
                       @elseif($count === 2)
@@ -377,7 +377,7 @@
                                  data-lightbox-src="{{ Storage::url($file->file_path) }}"
                                  data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
                                  data-lightbox-time="{{ $file->created_at->format('M d, Y \u00b7 g:i A') }}"
-                                 @click="$dispatch('open-lightbox', '{{ Storage::url($file->file_path) }}')"
+                                 @click="$dispatch('open-lightbox', { src: '{{ Storage::url($file->file_path) }}', taskId: {{ $task->id }} })"
                                  class="w-32 h-40 object-cover cursor-zoom-in hover:opacity-90 transition">
                           @endforeach
                         </div>
@@ -388,7 +388,7 @@
                                data-lightbox-src="{{ Storage::url($batchFiles->values()[0]->file_path) }}"
                                data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
                                data-lightbox-time="{{ $batchFiles->values()[0]->created_at->format('M d, Y \u00b7 g:i A') }}"
-                               @click="$dispatch('open-lightbox', '{{ Storage::url($batchFiles->values()[0]->file_path) }}')"
+                               @click="$dispatch('open-lightbox', { src: '{{ Storage::url($batchFiles->values()[0]->file_path) }}', taskId: {{ $task->id }} })"
                                class="w-64 h-36 object-cover cursor-zoom-in hover:opacity-90 transition">
                           <div class="flex gap-0.5 mt-0.5">
                             @foreach($batchFiles->values()->slice(1) as $file)
@@ -396,7 +396,7 @@
                                    data-lightbox-src="{{ Storage::url($file->file_path) }}"
                                    data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
                                    data-lightbox-time="{{ $file->created_at->format('M d, Y \u00b7 g:i A') }}"
-                                   @click="$dispatch('open-lightbox', '{{ Storage::url($file->file_path) }}')"
+                                   @click="$dispatch('open-lightbox', { src: '{{ Storage::url($file->file_path) }}', taskId: {{ $task->id }} })"
                                    class="flex-1 h-28 object-cover cursor-zoom-in hover:opacity-90 transition">
                             @endforeach
                           </div>
@@ -411,10 +411,10 @@
                                      data-lightbox-src="{{ Storage::url($file->file_path) }}"
                                      data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
                                      data-lightbox-time="{{ $file->created_at->format('M d, Y \u00b7 g:i A') }}"
-                                     @click="$dispatch('open-lightbox', '{{ Storage::url($file->file_path) }}')"
+                                     @click="$dispatch('open-lightbox', { src: '{{ Storage::url($file->file_path) }}', taskId: {{ $task->id }} })"
                                      class="w-full h-32 object-cover cursor-zoom-in hover:opacity-90 transition">
                                 @if($idx === 3 && $count > 4)
-                                  <div @click="$dispatch('open-lightbox', '{{ Storage::url($file->file_path) }}')"
+                                  <div @click="$dispatch('open-lightbox', { src: '{{ Storage::url($file->file_path) }}', taskId: {{ $task->id }} })"
                                        class="absolute inset-0 bg-black/50 flex items-center justify-center cursor-zoom-in">
                                     <span class="text-white text-lg font-bold">+{{ $count - 4 }}</span>
                                   </div>
@@ -429,7 +429,7 @@
                                      data-lightbox-src="{{ Storage::url($file->file_path) }}"
                                      data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
                                      data-lightbox-time="{{ $file->created_at->format('M d, Y \u00b7 g:i A') }}"
-                                     @click="$dispatch('open-lightbox', '{{ Storage::url($file->file_path) }}')"
+                                     @click="$dispatch('open-lightbox', { src: '{{ Storage::url($file->file_path) }}', taskId: {{ $task->id }} })"
                                      class="w-full h-24 object-cover cursor-zoom-in hover:opacity-90 transition">
                               @endforeach
                             </div>
@@ -501,31 +501,48 @@
 
     {{-- ===== LIGHTBOX WITH ZOOM + SENDER INFO ===== --}}
     @php
-      $allImageData = collect();
+      $imagesByTask = [];
       foreach ($tasks as $task) {
+        $taskImages = collect();
+        if ($task->reference_image) {
+          $taskImages->push([
+            'src' => Storage::url($task->reference_image),
+            'sender' => 'Reference Photo',
+            'time' => $task->created_at->format('M d, Y'),
+          ]);
+        }
+        if ($task->referenceFiles) {
+          foreach ($task->referenceFiles as $rf) {
+            if ($rf->isImage()) {
+              $rfSrc = Storage::url($rf->file_path);
+              if ($rfSrc !== Storage::url($task->reference_image)) {
+                $taskImages->push([
+                  'src' => $rfSrc,
+                  'sender' => 'Reference Photo',
+                  'time' => $task->created_at->format('M d, Y'),
+                ]);
+              }
+            }
+          }
+        }
         $sub = $submissionsByTask->get($task->id);
         if ($sub) {
-          foreach ($sub->files->filter(fn($f) => $f->isImage() || $f->isVideo()) as $f) {
-            $allImageData->push([
+          foreach ($sub->files->filter(fn($f) => $f->isImage())->sortBy('created_at') as $f) {
+            $taskImages->push([
               'src' => Storage::url($f->file_path),
               'sender' => $sub->user->name ?? 'User',
               'time' => $f->created_at->format('M d, Y · g:i A'),
             ]);
           }
         }
-        if ($task->reference_image) {
-          $allImageData->push([
-            'src' => Storage::url($task->reference_image),
-            'sender' => 'Reference Photo',
-            'time' => $task->created_at->format('M d, Y'),
-          ]);
-        }
+        $imagesByTask[$task->id] = $taskImages->values()->toArray();
       }
     @endphp
 
     <div x-data="{
            lightbox: false,
-           images: {{ json_encode($allImageData->values()->toArray()) }},
+           allTaskImages: {{ json_encode($imagesByTask) }},
+           images: [],
            currentIndex: 0,
            scale: 1,
            translateX: 0,
@@ -542,7 +559,17 @@
            get senderName() { return this.current.sender; },
            get senderTime() { return this.current.time; },
            open(detail) {
-               const src = typeof detail === 'string' ? detail : detail;
+               let src, taskId;
+               if (typeof detail === 'object' && detail.src) {
+                   src = detail.src;
+                   taskId = detail.taskId;
+               } else {
+                   src = typeof detail === 'string' ? detail : detail;
+                   taskId = null;
+               }
+               if (taskId && this.allTaskImages[taskId]) {
+                   this.images = this.allTaskImages[taskId];
+               }
                const idx = this.images.findIndex(i => i.src === src);
                this.currentIndex = idx >= 0 ? idx : 0;
                this.resetZoom();

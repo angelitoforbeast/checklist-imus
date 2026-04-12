@@ -35,7 +35,7 @@
         {{-- LEFT: LOGO + NAV --}}
         <div class="flex items-center flex-1 min-w-0">
           <div class="shrink-0">
-            <a href="{{ route('checklist.index') }}" class="text-white font-bold text-base sm:text-lg">
+            <a href="{{ Auth::check() && Auth::user()->isAdmin() ? route('checklist.conversations') : route('checklist.index') }}" class="text-white font-bold text-base sm:text-lg">
               <i class="fa-solid fa-clipboard-check mr-1 text-blue-400"></i>Checklist
             </a>
           </div>
@@ -45,10 +45,12 @@
             <div class="ml-6 flex-1 overflow-visible">
               <div class="no-scrollbar flex items-center gap-1 whitespace-nowrap overflow-x-auto">
                 @if(Auth::check())
-                  <a href="{{ route('checklist.index') }}"
-                     class="rounded-md px-3 py-2 text-sm font-medium {{ request()->is('checklist') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }} transition">
-                    <i class="fa-solid fa-clipboard-check mr-1"></i> Checklist
-                  </a>
+                  @if(!Auth::user()->isAdmin())
+                    <a href="{{ route('checklist.index') }}"
+                       class="rounded-md px-3 py-2 text-sm font-medium {{ request()->is('checklist') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }} transition">
+                      <i class="fa-solid fa-clipboard-check mr-1"></i> Checklist
+                    </a>
+                  @endif
                   @if(Auth::user()->isAdmin())
                     <a href="{{ route('checklist.conversations') }}"
                        class="rounded-md px-3 py-2 text-sm font-medium {{ request()->is('checklist/conversations*') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }} transition">
@@ -134,10 +136,12 @@
         </div>
 
         {{-- Nav links --}}
-        <a href="{{ route('checklist.index') }}" @click="mobileMenu = false"
-           class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm {{ request()->is('checklist') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }} transition">
-          <i class="fa-solid fa-clipboard-check w-5 text-center"></i> Checklist
-        </a>
+        @if(!Auth::user()->isAdmin())
+          <a href="{{ route('checklist.index') }}" @click="mobileMenu = false"
+             class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm {{ request()->is('checklist') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }} transition">
+            <i class="fa-solid fa-clipboard-check w-5 text-center"></i> Checklist
+          </a>
+        @endif
         @if(Auth::user()->isAdmin())
           <a href="{{ route('checklist.conversations') }}" @click="mobileMenu = false"
              class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm {{ request()->is('checklist/conversations*') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }} transition">

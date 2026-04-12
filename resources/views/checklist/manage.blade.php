@@ -32,7 +32,7 @@
     @endif
 
     @php
-      $roles = \App\Models\Role::with('users')->orderBy('name')->get();
+      $roles = \App\Models\Role::with('users')->where('name', '!=', 'Admin')->orderBy('name')->get();
     @endphp
 
     {{-- ====== ADD TASK FORM (Slide-down) ====== --}}
