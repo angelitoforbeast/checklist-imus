@@ -250,15 +250,45 @@
                sentPhotos: [
                  @if($done || $reverted)
                    @foreach($imageFiles as $f)
-                     { url: '{{ Storage::url($f->file_path) }}', name: '{{ $f->file_original_name }}', time: '{{ $f->created_at->format('g:i A') }}', by: '{{ $sub->user->name ?? 'Unknown' }}' },
+                     { url: '{{ Storage::url($f->file_path) }}', name: '{{ $f->file_original_name }}', time: '{{ $f->created_at->format('g:i A') }}', ts: {{ $f->created_at->timestamp }}, by: '{{ $sub->user->name ?? 'Unknown' }}' },
                    @endforeach
                  @endif
                ],
                sentNotes: [
                  @if($sub?->notes)
-                   { text: {{ json_encode($sub->notes) }}, time: '{{ $sub->updated_at->format('g:i A') }}', by: '{{ $sub->user->name ?? 'Unknown' }}' },
+                   { text: {{ json_encode($sub->notes) }}, time: '{{ $sub->updated_at->format('g:i A') }}', ts: {{ $sub->updated_at->timestamp }}, by: '{{ $sub->user->name ?? 'Unknown' }}' },
                  @endif
                ],
+               adminComments: [
+                 @php $taskComments = $commentsByTask->get($task->id, collect()); @endphp
+                 @foreach($taskComments as $comment)
+                   { text: {{ json_encode($comment->message) }}, time: '{{ $comment->created_at->format('g:i A') }}', ts: {{ $comment->created_at->timestamp }}, by: '{{ $comment->user->name ?? 'Admin' }}', initial: '{{ strtoupper(substr($comment->user->name ?? 'A', 0, 1)) }}' },
+                 @endforeach
+               ],
+               get chatMessages() {
+                 // Group photos into batches (within 120 seconds = same batch)
+                 let messages = [];
+                 let currentBatch = null;
+                 for (const photo of this.sentPhotos) {
+                   if (!currentBatch || Math.abs(photo.ts - currentBatch.ts) > 120) {
+                     currentBatch = { type: 'photo_batch', photos: [photo], time: photo.time, ts: photo.ts, by: photo.by };
+                     messages.push(currentBatch);
+                   } else {
+                     currentBatch.photos.push(photo);
+                   }
+                 }
+                 // Add notes
+                 for (const note of this.sentNotes) {
+                   messages.push({ type: 'note', text: note.text, time: note.time, ts: note.ts, by: note.by });
+                 }
+                 // Add admin comments
+                 for (const comment of this.adminComments) {
+                   messages.push({ type: 'admin_comment', text: comment.text, time: comment.time, ts: comment.ts, by: comment.by, initial: comment.initial });
+                 }
+                 // Sort all by timestamp
+                 messages.sort((a, b) => a.ts - b.ts);
+                 return messages;
+               },
                async autoUpload(fileList) {
                  const files = [...fileList].filter(f => f.type.startsWith('image/'));
                  if (files.length === 0) return;
@@ -275,7 +305,7 @@
                      });
                      const data = await res.json();
                      if (data.success) {
-                       this.sentPhotos.push({ url: data.url, name: data.name, time: data.uploaded_at, by: data.uploaded_by });
+                       this.sentPhotos.push({ url: data.url, name: data.name, time: data.uploaded_at, ts: Math.floor(Date.now()/1000), by: data.uploaded_by });
                        this.$nextTick(() => {
                          const chatArea = this.$refs.chatArea{{ $task->id }};
                          if (chatArea) chatArea.scrollTop = chatArea.scrollHeight;
@@ -303,7 +333,7 @@
                    });
                    const data = await res.json();
                    if (data.success) {
-                     this.sentNotes = [{ text: data.notes, time: data.sent_at, by: data.sent_by }];
+                     this.sentNotes.push({ text: data.notes, time: data.sent_at, ts: Math.floor(Date.now()/1000), by: data.sent_by });
                      this.noteText = '';
                      this.$nextTick(() => {
                        const chatArea = this.$refs.chatArea{{ $task->id }};
@@ -387,53 +417,57 @@
                 </div>
               </div>
 
-              {{-- Sent photos (right side, horizontal scroll) --}}
-              <template x-if="sentPhotos.length > 0">
+              {{-- Interleaved chat messages (photos batched, notes, admin comments) --}}
+              <template x-for="(msg, mi) in chatMessages" :key="'msg'+mi">
                 <div>
-                  <div class="overflow-x-auto -mx-4 px-4 pb-1" style="-webkit-overflow-scrolling: touch;">
-                    <div class="flex gap-2 justify-end" style="min-width: min-content;">
-                      <template x-for="(photo, i) in sentPhotos" :key="i">
-                        <div class="flex-shrink-0 w-36">
-                          <img :src="photo.url"
-                               :data-lightbox-src="photo.url"
-                               @click="$dispatch('open-lightbox', photo.url)"
-                               class="w-36 h-36 object-cover rounded-2xl shadow-sm cursor-zoom-in active:scale-95 transition-transform"
-                               :class="i === sentPhotos.length - 1 ? 'rounded-tr-md' : ''">
-                          <p class="text-[10px] text-gray-400 text-right mt-0.5 mr-1 truncate">
-                            <span x-text="photo.by"></span> · <span x-text="photo.time"></span>
-                          </p>
+                  {{-- Photo batch (right side, user sent) --}}
+                  <template x-if="msg.type === 'photo_batch'">
+                    <div class="flex justify-end">
+                      <div class="max-w-[85%]">
+                        <div class="flex flex-wrap gap-1.5 justify-end">
+                          <template x-for="(photo, pi) in msg.photos" :key="'p'+mi+'_'+pi">
+                            <img :src="photo.url"
+                                 :data-lightbox-src="photo.url"
+                                 @click="$dispatch('open-lightbox', photo.url)"
+                                 class="w-28 h-28 object-cover rounded-2xl shadow-sm cursor-zoom-in active:scale-95 transition-transform"
+                                 :class="pi === 0 && msg.photos.length === 1 ? 'rounded-tr-md' : ''">
+                          </template>
                         </div>
-                      </template>
+                        <p class="text-[10px] text-gray-400 text-right mt-1 mr-1">
+                          <span x-text="msg.by"></span> · <span x-text="msg.time"></span>
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </template>
+                  </template>
 
-              {{-- Admin comments (left side, like received messages from admin) --}}
-              @php $taskComments = $commentsByTask->get($task->id, collect()); @endphp
-              @foreach($taskComments as $comment)
-                <div class="flex items-start gap-2">
-                  <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold" style="background-color:#1877F2">{{ strtoupper(substr($comment->user->name ?? 'A', 0, 1)) }}</div>
-                  <div class="max-w-[75%]">
-                    <div class="bg-gray-200 rounded-2xl rounded-tl-md px-4 py-2.5">
-                      <p class="text-sm text-gray-800">{{ $comment->message }}</p>
+                  {{-- Note (right side, blue bubble) --}}
+                  <template x-if="msg.type === 'note'">
+                    <div class="flex justify-end">
+                      <div class="max-w-[75%]">
+                        <div class="rounded-2xl rounded-tr-md px-4 py-2.5 text-white text-sm" style="background-color:#1877F2">
+                          <span x-text="msg.text"></span>
+                        </div>
+                        <p class="text-[10px] text-gray-400 text-right mt-1 mr-1">
+                          <span x-text="msg.by"></span> · <span x-text="msg.time"></span>
+                        </p>
+                      </div>
                     </div>
-                    <p class="text-[10px] text-gray-400 mt-1 ml-1">{{ $comment->user->name ?? 'Admin' }} · {{ $comment->created_at->format('g:i A') }}</p>
-                  </div>
-                </div>
-              @endforeach
+                  </template>
 
-              {{-- Sent notes (right side, blue bubble like Messenger) --}}
-              <template x-for="(note, i) in sentNotes" :key="'n'+i">
-                <div class="flex justify-end">
-                  <div class="max-w-[75%]">
-                    <div class="rounded-2xl rounded-tr-md px-4 py-2.5 text-white text-sm" style="background-color:#1877F2">
-                      <span x-text="note.text"></span>
+                  {{-- Admin comment (left side, gray bubble) --}}
+                  <template x-if="msg.type === 'admin_comment'">
+                    <div class="flex items-start gap-2">
+                      <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold" style="background-color:#1877F2" x-text="msg.initial"></div>
+                      <div class="max-w-[75%]">
+                        <div class="bg-gray-200 rounded-2xl rounded-tl-md px-4 py-2.5">
+                          <p class="text-sm text-gray-800" x-text="msg.text"></p>
+                        </div>
+                        <p class="text-[10px] text-gray-400 mt-1 ml-1">
+                          <span x-text="msg.by"></span> · <span x-text="msg.time"></span>
+                        </p>
+                      </div>
                     </div>
-                    <p class="text-[10px] text-gray-400 text-right mt-1 mr-1">
-                      <span x-text="note.by"></span> · <span x-text="note.time"></span>
-                    </p>
-                  </div>
+                  </template>
                 </div>
               </template>
 

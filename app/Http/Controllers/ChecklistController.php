@@ -147,6 +147,86 @@ class ChecklistController extends Controller
         ));
     }
 
+    public function conversations(Request $request)
+    {
+        $date = $request->query('date', now()->toDateString());
+        $roleFilter = $request->query('role', '');
+
+        try {
+            $dateObj = \Carbon\Carbon::parse($date);
+        } catch (\Exception $e) {
+            $dateObj = now();
+        }
+
+        $isToday = $dateObj->isToday();
+
+        if ($isToday) {
+            $tasks = ChecklistTask::with('assignedUsers')
+                ->where('is_active', true)
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get();
+        } else {
+            $endOfDay = $dateObj->copy()->endOfDay();
+            $tasks = ChecklistTask::withTrashed()
+                ->with('assignedUsers')
+                ->whereDate('created_at', '<=', $dateObj->toDateString())
+                ->where(function ($q) use ($endOfDay) {
+                    $q->whereNull('deleted_at')
+                      ->orWhere('deleted_at', '>', $endOfDay);
+                })
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get();
+        }
+
+        $submissionsByTask = ChecklistSubmission::with(['user', 'files', 'logs.user'])
+            ->where('date', $dateObj->toDateString())
+            ->get()
+            ->keyBy('checklist_task_id');
+
+        if (!$isToday) {
+            $missingIds = $submissionsByTask->keys()->diff($tasks->pluck('id'));
+            if ($missingIds->isNotEmpty()) {
+                $extra = ChecklistTask::withTrashed()
+                    ->with('assignedUsers')
+                    ->whereIn('id', $missingIds)
+                    ->get();
+                $tasks = $tasks->merge($extra)->sortBy([['sort_order', 'asc'], ['id', 'asc']])->values();
+            }
+        }
+
+        $doneCount  = $submissionsByTask->where('status', 'completed')->count();
+        $totalTasks = $tasks->count();
+
+        $prevDate = $dateObj->copy()->subDay()->toDateString();
+        $nextDate = $dateObj->copy()->addDay()->toDateString();
+
+        $roles = \App\Models\Role::orderBy('name')->get();
+        if ($roleFilter) {
+            $roleUserIds = \App\Models\User::where('role_id', $roleFilter)->pluck('id')->toArray();
+            $tasks = $tasks->filter(function ($task) use ($roleUserIds) {
+                $assignedIds = $task->assignedUsers->pluck('id')->toArray();
+                return empty($assignedIds) || !empty(array_intersect($assignedIds, $roleUserIds));
+            })->values();
+            $doneCount = $tasks->filter(fn($t) => $submissionsByTask->has($t->id) && $submissionsByTask->get($t->id)->status === 'completed')->count();
+            $totalTasks = $tasks->count();
+        }
+
+        $commentsByTask = \App\Models\ChecklistTaskComment::with('user')
+            ->where('date', $dateObj->toDateString())
+            ->orderBy('created_at')
+            ->get()
+            ->groupBy('checklist_task_id');
+
+        return view('checklist.conversations', compact(
+            'tasks', 'submissionsByTask',
+            'doneCount', 'totalTasks',
+            'dateObj', 'prevDate', 'nextDate', 'isToday',
+            'roles', 'roleFilter', 'commentsByTask'
+        ));
+    }
+
     public function manage()
     {
         $allTasks = ChecklistTask::with('assignedUsers')

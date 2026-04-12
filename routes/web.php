@@ -27,6 +27,7 @@ Route::get('/', fn () => redirect('/checklist'));
 Route::middleware(['web','auth'])->prefix('checklist')->name('checklist.')->group(function () {
     Route::get('/', [ChecklistController::class, 'index'])->name('index');
     Route::get('/report', [ChecklistController::class, 'report'])->name('report');
+    Route::get('/conversations', [ChecklistController::class, 'conversations'])->name('conversations');
     Route::post('/{task}/submit', [ChecklistController::class, 'submit'])->name('submit');
     Route::post("/{task}/upload-photo", [ChecklistController::class, "uploadPhoto"])->name("upload-photo");
     Route::post("/{task}/send-note", [ChecklistController::class, "sendNote"])->name("send-note");
