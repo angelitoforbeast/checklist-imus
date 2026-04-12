@@ -57,6 +57,7 @@ class ChecklistController extends Controller
     public function report(Request $request)
     {
         $date = $request->query('date', now()->toDateString());
+        $roleFilter = $request->query('role', '');
 
         try {
             $dateObj = \Carbon\Carbon::parse($date);
@@ -110,10 +111,25 @@ class ChecklistController extends Controller
         $prevDate = $dateObj->copy()->subDay()->toDateString();
         $nextDate = $dateObj->copy()->addDay()->toDateString();
 
+        // Role filter: filter tasks by assigned users' role
+        $roles = \App\Models\Role::orderBy('name')->get();
+        if ($roleFilter) {
+            $roleUserIds = \App\Models\User::where('role_id', $roleFilter)->pluck('id')->toArray();
+            $tasks = $tasks->filter(function ($task) use ($roleUserIds) {
+                $assignedIds = $task->assignedUsers->pluck('id')->toArray();
+                // Show task if it has no assignment (everyone) or if any assigned user is in the filtered role
+                return empty($assignedIds) || !empty(array_intersect($assignedIds, $roleUserIds));
+            })->values();
+            // Recalculate counts after filter
+            $doneCount = $tasks->filter(fn($t) => $submissionsByTask->has($t->id))->count();
+            $totalTasks = $tasks->count();
+        }
+
         return view('checklist.report', compact(
             'tasks', 'submissionsByTask',
             'doneCount', 'totalTasks',
-            'dateObj', 'prevDate', 'nextDate', 'isToday'
+            'dateObj', 'prevDate', 'nextDate', 'isToday',
+            'roles', 'roleFilter'
         ));
     }
 
@@ -220,6 +236,36 @@ class ChecklistController extends Controller
 
         $submission->delete();
         return back()->with('success', 'Submission removed.');
+    }
+
+    /**
+     * Revert a completed submission back to pending (deletes submission + files).
+     * Admin only — accessible from the report page.
+     */
+    public function revertSubmission(ChecklistSubmission $submission)
+    {
+        if (!Auth::user()?->isAdmin()) {
+            abort(403);
+        }
+
+        // Delete all uploaded files from storage
+        foreach ($submission->files as $file) {
+            Storage::disk('public')->delete($file->file_path);
+            $file->delete();
+        }
+        if ($submission->file_path) {
+            Storage::disk('public')->delete($submission->file_path);
+        }
+
+        // Delete logs
+        $submission->logs()->delete();
+        $submission->analysisLogs()->delete();
+        $submission->approvalLogs()->delete();
+
+        // Delete the submission itself
+        $submission->delete();
+
+        return back()->with('success', 'Task reverted to pending.');
     }
 
     public function deleteFile(ChecklistSubmissionFile $file)

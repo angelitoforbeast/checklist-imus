@@ -24,7 +24,7 @@
         <div class="flex items-stretch gap-0 divide-x divide-gray-100">
 
           {{-- Prev day --}}
-          <a href="{{ route('checklist.report', ['date' => $prevDate]) }}"
+          <a href="{{ route('checklist.report', ['date' => $prevDate, 'role' => $roleFilter]) }}"
              class="flex items-center px-4 py-3.5 text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
           </a>
@@ -37,6 +37,7 @@
                 <span class="inline-block text-xs bg-green-100 text-green-700 font-semibold px-2 py-0.5 rounded-full leading-none mt-0.5">Today</span>
               @else
                 <form method="GET" action="{{ route('checklist.report') }}" class="inline">
+                  @if($roleFilter)<input type="hidden" name="role" value="{{ $roleFilter }}">@endif
                   <input type="date" name="date" value="{{ $dateObj->toDateString() }}"
                          onchange="this.form.submit()"
                          max="{{ now()->toDateString() }}"
@@ -47,10 +48,24 @@
           </div>
 
           {{-- Next day --}}
-          <a href="{{ route('checklist.report', ['date' => $nextDate]) }}"
+          <a href="{{ route('checklist.report', ['date' => $nextDate, 'role' => $roleFilter]) }}"
              class="flex items-center px-4 py-3.5 transition {{ $isToday ? 'text-gray-200 pointer-events-none' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-50' }}">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
           </a>
+
+          {{-- Role filter --}}
+          <div class="flex items-center gap-2 px-4 py-3">
+            <form method="GET" action="{{ route('checklist.report') }}" class="flex items-center gap-2">
+              <input type="hidden" name="date" value="{{ $dateObj->toDateString() }}">
+              <select name="role" onchange="this.form.submit()"
+                      class="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-300 cursor-pointer">
+                <option value="">All Roles</option>
+                @foreach($roles as $role)
+                  <option value="{{ $role->id }}" {{ $roleFilter == $role->id ? 'selected' : '' }}>{{ $role->name }}</option>
+                @endforeach
+              </select>
+            </form>
+          </div>
 
           {{-- Progress + links --}}
           <div class="flex items-center gap-3 px-4 py-3">
@@ -119,6 +134,7 @@
                   <th class="text-left px-3 py-3 min-w-[200px]">Notes</th>
                   <th class="text-left px-3 py-3 min-w-[140px]">Submitted by</th>
                   <th class="text-left px-3 py-3 w-[110px]">AI Analysis</th>
+                  <th class="text-left px-3 py-3 w-[80px]">Action</th>
                   <th class="text-left px-3 py-3 w-[120px]">Approval</th>
                 </tr>
               </thead>
@@ -399,6 +415,22 @@
                       @endif
                     </td>
 
+                    {{-- Revert to Pending (admin only) --}}
+                    <td class="px-3 py-3 align-middle">
+                      @if($done && Auth::user()->isAdmin())
+                        <form method="POST" action="{{ route('checklist.revert-submission', $sub) }}"
+                              onsubmit="return confirm('Revert this task to pending? All photos, notes, and analysis will be deleted.')">
+                          @csrf
+                          <button type="submit"
+                                  class="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition font-medium whitespace-nowrap">
+                            ↩ Revert
+                          </button>
+                        </form>
+                      @else
+                        <span class="text-gray-200 text-xs">—</span>
+                      @endif
+                    </td>
+
                     {{-- Approval button --}}
                     <td class="px-3 py-3 align-middle">
                       @if($done)
@@ -438,7 +470,7 @@
                   {{-- AI Analysis result row --}}
                   @if($done)
                     <tr x-show="showAnalysis || analyzing" x-transition class="border-b border-purple-100 bg-purple-50/30">
-                      <td colspan="8" class="px-6 py-4">
+                      <td colspan="9" class="px-6 py-4">
                         {{-- Loading --}}
                         <template x-if="analyzing">
                           <div class="flex items-center gap-2 text-sm text-purple-500">
@@ -490,7 +522,7 @@
 
                     {{-- Analysis History row --}}
                     <tr x-show="showHistory" x-transition class="border-b border-purple-100 bg-purple-50/10">
-                      <td colspan="8" class="px-6 py-4">
+                      <td colspan="9" class="px-6 py-4">
                         <template x-if="historyLoading">
                           <div class="flex items-center gap-2 text-xs text-gray-400">
                             <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
@@ -522,7 +554,7 @@
 
                     {{-- Approval result row --}}
                     <tr x-show="showApproval || approving" x-transition class="border-b border-emerald-100 bg-emerald-50/30">
-                      <td colspan="8" class="px-6 py-4">
+                      <td colspan="9" class="px-6 py-4">
                         {{-- Loading --}}
                         <template x-if="approving">
                           <div class="flex items-center gap-2 text-sm text-emerald-500">
@@ -580,7 +612,7 @@
 
                     {{-- Approval History row --}}
                     <tr x-show="showApprovalHistory" x-transition class="border-b border-emerald-100 bg-emerald-50/10">
-                      <td colspan="8" class="px-6 py-4">
+                      <td colspan="9" class="px-6 py-4">
                         <template x-if="approvalHistoryLoading">
                           <div class="flex items-center gap-2 text-xs text-gray-400">
                             <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">

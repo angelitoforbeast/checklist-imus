@@ -40,6 +40,7 @@ Route::middleware(['web','auth'])->prefix('checklist')->name('checklist.')->grou
         Route::patch('/tasks/{task}', [ChecklistController::class, 'updateTask'])->name('update-task');
         Route::delete('/tasks/{task}', [ChecklistController::class, 'destroyTask'])->name('destroy-task');
         Route::post('/tasks/reorder', [ChecklistController::class, 'reorderTasks'])->name('reorder');
+        Route::post('/submission/{submission}/revert', [ChecklistController::class, 'revertSubmission'])->name('revert-submission');
     });
 
     Route::post('/submission/{submission}/analyze', [ChecklistController::class, 'analyzeSubmission'])->name('analyze');
