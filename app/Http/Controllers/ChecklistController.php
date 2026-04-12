@@ -38,6 +38,19 @@ class ChecklistController extends Controller
             $tasks = $allTasks;
         }
 
+        // Filter out "once" tasks that have already been completed on any previous day
+        $onceTaskIds = $tasks->where('frequency', 'once')->pluck('id');
+        if ($onceTaskIds->isNotEmpty()) {
+            $completedOnceIds = ChecklistSubmission::whereIn('checklist_task_id', $onceTaskIds)
+                ->where('status', 'completed')
+                ->where('date', '<', $today)
+                ->pluck('checklist_task_id')
+                ->unique();
+            if ($completedOnceIds->isNotEmpty()) {
+                $tasks = $tasks->reject(fn($t) => $completedOnceIds->contains($t->id))->values();
+            }
+        }
+
         // One submission per task per day — keyed by task_id
         $submissionsByTask = ChecklistSubmission::with(['user', 'files', 'logs.user'])
             ->where('date', $today)
@@ -406,6 +419,7 @@ class ChecklistController extends Controller
             'ai_prompt'       => 'nullable|string|max:2000',
             'approval_prompt' => 'nullable|string|max:2000',
             'task_time'       => 'nullable|date_format:H:i',
+            'frequency'       => 'nullable|in:daily,once',
             'reference_image' => 'nullable|image|max:5120',
         ]);
 
@@ -417,6 +431,7 @@ class ChecklistController extends Controller
         $task = ChecklistTask::create([
             ...$validated,
             'reference_image' => $imagePath,
+            'frequency'  => $validated['frequency'] ?? 'daily',
             'sort_order' => (ChecklistTask::max('sort_order') ?? 0) + 1,
             'is_active'  => true,
         ]);
@@ -437,6 +452,7 @@ class ChecklistController extends Controller
             'ai_prompt'       => 'nullable|string|max:2000',
             'approval_prompt' => 'nullable|string|max:2000',
             'task_time'       => 'nullable|date_format:H:i',
+            'frequency'       => 'nullable|in:daily,once',
             'reference_image' => 'nullable|image|max:5120',
         ]);
 

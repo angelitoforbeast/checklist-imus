@@ -10,7 +10,7 @@ class AuthController extends Controller
     public function showLogin()
     {
         if (Auth::check()) {
-            return redirect('/checklist');
+            return redirect(Auth::user()->isAdmin() ? '/checklist/conversations' : '/checklist');
         }
         return view('auth.login');
     }
@@ -30,7 +30,8 @@ class AuthController extends Controller
                 return back()->withErrors(['email' => 'Your account has been deactivated.']);
             }
 
-            return redirect()->intended('/checklist');
+            $defaultUrl = Auth::user()->isAdmin() ? '/checklist/conversations' : '/checklist';
+            return redirect()->intended($defaultUrl);
         }
 
         return back()->withErrors([

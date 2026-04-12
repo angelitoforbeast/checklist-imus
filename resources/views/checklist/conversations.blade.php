@@ -340,6 +340,9 @@
                         {{-- Single photo: large bubble --}}
                         <div class="rounded-2xl rounded-bl-md overflow-hidden shadow-sm border border-gray-200">
                           <img src="{{ Storage::url($batchFiles->first()->file_path) }}"
+                               data-lightbox-src="{{ Storage::url($batchFiles->first()->file_path) }}"
+                               data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
+                               data-lightbox-time="{{ $batchFiles->first()->created_at->format('M d, Y \u00b7 g:i A') }}"
                                @click="$dispatch('open-lightbox', '{{ Storage::url($batchFiles->first()->file_path) }}')"
                                class="w-56 h-56 object-cover cursor-zoom-in hover:opacity-90 transition">
                         </div>
@@ -348,6 +351,9 @@
                         <div class="flex gap-0.5 rounded-2xl rounded-bl-md overflow-hidden shadow-sm border border-gray-200">
                           @foreach($batchFiles as $file)
                             <img src="{{ Storage::url($file->file_path) }}"
+                                 data-lightbox-src="{{ Storage::url($file->file_path) }}"
+                                 data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
+                                 data-lightbox-time="{{ $file->created_at->format('M d, Y \u00b7 g:i A') }}"
                                  @click="$dispatch('open-lightbox', '{{ Storage::url($file->file_path) }}')"
                                  class="w-32 h-40 object-cover cursor-zoom-in hover:opacity-90 transition">
                           @endforeach
@@ -356,11 +362,17 @@
                         {{-- Three photos: 1 big + 2 small --}}
                         <div class="rounded-2xl rounded-bl-md overflow-hidden shadow-sm border border-gray-200">
                           <img src="{{ Storage::url($batchFiles->values()[0]->file_path) }}"
+                               data-lightbox-src="{{ Storage::url($batchFiles->values()[0]->file_path) }}"
+                               data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
+                               data-lightbox-time="{{ $batchFiles->values()[0]->created_at->format('M d, Y \u00b7 g:i A') }}"
                                @click="$dispatch('open-lightbox', '{{ Storage::url($batchFiles->values()[0]->file_path) }}')"
                                class="w-64 h-36 object-cover cursor-zoom-in hover:opacity-90 transition">
                           <div class="flex gap-0.5 mt-0.5">
                             @foreach($batchFiles->values()->slice(1) as $file)
                               <img src="{{ Storage::url($file->file_path) }}"
+                                   data-lightbox-src="{{ Storage::url($file->file_path) }}"
+                                   data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
+                                   data-lightbox-time="{{ $file->created_at->format('M d, Y \u00b7 g:i A') }}"
                                    @click="$dispatch('open-lightbox', '{{ Storage::url($file->file_path) }}')"
                                    class="flex-1 h-28 object-cover cursor-zoom-in hover:opacity-90 transition">
                             @endforeach
@@ -373,6 +385,9 @@
                             @foreach($batchFiles->take(4) as $idx => $file)
                               <div class="relative">
                                 <img src="{{ Storage::url($file->file_path) }}"
+                                     data-lightbox-src="{{ Storage::url($file->file_path) }}"
+                                     data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
+                                     data-lightbox-time="{{ $file->created_at->format('M d, Y \u00b7 g:i A') }}"
                                      @click="$dispatch('open-lightbox', '{{ Storage::url($file->file_path) }}')"
                                      class="w-full h-32 object-cover cursor-zoom-in hover:opacity-90 transition">
                                 @if($idx === 3 && $count > 4)
@@ -388,6 +403,9 @@
                             <div class="grid grid-cols-3 gap-0.5 mt-0.5">
                               @foreach($batchFiles->slice(4) as $file)
                                 <img src="{{ Storage::url($file->file_path) }}"
+                                     data-lightbox-src="{{ Storage::url($file->file_path) }}"
+                                     data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
+                                     data-lightbox-time="{{ $file->created_at->format('M d, Y \u00b7 g:i A') }}"
                                      @click="$dispatch('open-lightbox', '{{ Storage::url($file->file_path) }}')"
                                      class="w-full h-24 object-cover cursor-zoom-in hover:opacity-90 transition">
                               @endforeach
@@ -458,34 +476,93 @@
       </div>
     @endforeach
 
-    {{-- ===== LIGHTBOX ===== --}}
+    {{-- ===== LIGHTBOX WITH ZOOM + SENDER INFO ===== --}}
     @php
-      $allImageUrls = collect();
+      $allImageData = collect();
       foreach ($tasks as $task) {
         $sub = $submissionsByTask->get($task->id);
         if ($sub) {
           foreach ($sub->files->filter(fn($f) => $f->isImage()) as $f) {
-            $allImageUrls->push(Storage::url($f->file_path));
+            $allImageData->push([
+              'src' => Storage::url($f->file_path),
+              'sender' => $sub->user->name ?? 'User',
+              'time' => $f->created_at->format('M d, Y · g:i A'),
+            ]);
           }
         }
         if ($task->reference_image) {
-          $allImageUrls->push(Storage::url($task->reference_image));
+          $allImageData->push([
+            'src' => Storage::url($task->reference_image),
+            'sender' => 'Reference Photo',
+            'time' => $task->created_at->format('M d, Y'),
+          ]);
         }
       }
     @endphp
 
     <div x-data="{
            lightbox: false,
-           images: {{ json_encode($allImageUrls->values()->toArray()) }},
+           images: {{ json_encode($allImageData->values()->toArray()) }},
            currentIndex: 0,
-           get lightSrc() { return this.images[this.currentIndex] ?? ''; },
-           open(src) {
-               const idx = this.images.indexOf(src);
+           scale: 1,
+           translateX: 0,
+           translateY: 0,
+           isDragging: false,
+           startX: 0,
+           startY: 0,
+           lastTX: 0,
+           lastTY: 0,
+           initialPinchDist: 0,
+           initialPinchScale: 1,
+           get current() { return this.images[this.currentIndex] ?? { src: '', sender: '', time: '' }; },
+           get lightSrc() { return this.current.src; },
+           get senderName() { return this.current.sender; },
+           get senderTime() { return this.current.time; },
+           open(detail) {
+               const src = typeof detail === 'string' ? detail : detail;
+               const idx = this.images.findIndex(i => i.src === src);
                this.currentIndex = idx >= 0 ? idx : 0;
+               this.resetZoom();
                this.lightbox = true;
            },
-           prev() { if (this.currentIndex > 0) this.currentIndex--; },
-           next() { if (this.currentIndex < this.images.length - 1) this.currentIndex++; }
+           resetZoom() { this.scale = 1; this.translateX = 0; this.translateY = 0; },
+           prev() { if (this.currentIndex > 0) { this.currentIndex--; this.resetZoom(); } },
+           next() { if (this.currentIndex < this.images.length - 1) { this.currentIndex++; this.resetZoom(); } },
+           handleWheel(e) {
+               e.preventDefault();
+               const delta = e.deltaY > 0 ? 0.9 : 1.1;
+               this.scale = Math.min(Math.max(this.scale * delta, 1), 8);
+               if (this.scale === 1) { this.translateX = 0; this.translateY = 0; }
+           },
+           handleTouchStart(e) {
+               if (e.touches.length === 2) {
+                   this.initialPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                   this.initialPinchScale = this.scale;
+               } else if (e.touches.length === 1 && this.scale > 1) {
+                   this.isDragging = true;
+                   this.startX = e.touches[0].clientX - this.translateX;
+                   this.startY = e.touches[0].clientY - this.translateY;
+               }
+           },
+           handleTouchMove(e) {
+               e.preventDefault();
+               if (e.touches.length === 2) {
+                   const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                   this.scale = Math.min(Math.max(this.initialPinchScale * (dist / this.initialPinchDist), 1), 8);
+                   if (this.scale === 1) { this.translateX = 0; this.translateY = 0; }
+               } else if (e.touches.length === 1 && this.isDragging) {
+                   this.translateX = e.touches[0].clientX - this.startX;
+                   this.translateY = e.touches[0].clientY - this.startY;
+               }
+           },
+           handleTouchEnd(e) {
+               this.isDragging = false;
+               this.initialPinchDist = 0;
+           },
+           handleDblClick(e) {
+               e.stopPropagation();
+               if (this.scale > 1) { this.resetZoom(); } else { this.scale = 3; }
+           }
          }"
          @open-lightbox.window="open($event.detail)"
          @keydown.escape.window="lightbox = false"
@@ -493,31 +570,52 @@
          @keydown.arrow-right.window="if (lightbox) next()"
          x-show="lightbox"
          x-transition.opacity
-         @click="lightbox = false"
-         class="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4"
+         @click="if (scale <= 1) lightbox = false"
+         class="fixed inset-0 z-[60] bg-black/90 flex flex-col items-center justify-center"
          style="display:none">
 
+      {{-- Close button --}}
       <button @click="lightbox = false"
-              class="absolute top-4 right-4 w-9 h-9 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-lg transition z-10">✕</button>
+              class="absolute top-4 right-4 w-9 h-9 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-lg transition z-20">✕</button>
 
+      {{-- Counter --}}
       <template x-if="images.length > 1">
-        <div class="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-3 py-1 rounded-full z-10"
+        <div class="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-3 py-1 rounded-full z-20"
              x-text="(currentIndex + 1) + ' / ' + images.length"></div>
       </template>
 
+      {{-- Prev button --}}
       <template x-if="images.length > 1">
         <button @click.stop="prev()"
                 :class="currentIndex === 0 ? 'opacity-20 pointer-events-none' : 'opacity-80 hover:opacity-100'"
-                class="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-xl transition z-10">‹</button>
+                class="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-xl transition z-20">‹</button>
       </template>
 
-      <img :src="lightSrc" class="max-w-full max-h-full rounded-xl shadow-2xl object-contain" @click.stop>
+      {{-- Image with zoom --}}
+      <div class="flex-1 flex items-center justify-center w-full overflow-hidden p-4"
+           @wheel.prevent="handleWheel($event)"
+           @touchstart="handleTouchStart($event)"
+           @touchmove.prevent="handleTouchMove($event)"
+           @touchend="handleTouchEnd($event)">
+        <img :src="lightSrc"
+             :style="'transform: scale(' + scale + ') translate(' + (translateX/scale) + 'px, ' + (translateY/scale) + 'px); transition: ' + (isDragging ? 'none' : 'transform 0.2s ease')"
+             class="max-w-full max-h-full rounded-xl shadow-2xl object-contain select-none"
+             @click.stop="handleDblClick($event)"
+             draggable="false">
+      </div>
 
+      {{-- Next button --}}
       <template x-if="images.length > 1">
         <button @click.stop="next()"
                 :class="currentIndex === images.length - 1 ? 'opacity-20 pointer-events-none' : 'opacity-80 hover:opacity-100'"
-                class="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-xl transition z-10">›</button>
+                class="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-xl transition z-20">›</button>
       </template>
+
+      {{-- Sender info caption bar --}}
+      <div class="w-full flex-shrink-0 bg-black/70 px-4 py-3 text-center z-20" @click.stop>
+        <p class="text-white text-sm font-medium" x-text="senderName"></p>
+        <p class="text-white/60 text-xs" x-text="senderTime"></p>
+      </div>
     </div>
 
   </div>

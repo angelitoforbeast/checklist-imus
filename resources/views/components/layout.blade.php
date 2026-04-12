@@ -50,6 +50,10 @@
                     <i class="fa-solid fa-clipboard-check mr-1"></i> Checklist
                   </a>
                   @if(Auth::user()->isAdmin())
+                    <a href="{{ route('checklist.conversations') }}"
+                       class="rounded-md px-3 py-2 text-sm font-medium {{ request()->is('checklist/conversations*') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }} transition">
+                      <i class="fa-solid fa-comments mr-1"></i> Conversations
+                    </a>
                     <a href="{{ route('checklist.report') }}"
                        class="rounded-md px-3 py-2 text-sm font-medium {{ request()->is('checklist/report*') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }} transition">
                       <i class="fa-solid fa-chart-bar mr-1"></i> Report
@@ -135,6 +139,10 @@
           <i class="fa-solid fa-clipboard-check w-5 text-center"></i> Checklist
         </a>
         @if(Auth::user()->isAdmin())
+          <a href="{{ route('checklist.conversations') }}" @click="mobileMenu = false"
+             class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm {{ request()->is('checklist/conversations*') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }} transition">
+            <i class="fa-solid fa-comments w-5 text-center"></i> Conversations
+          </a>
           <a href="{{ route('checklist.report') }}" @click="mobileMenu = false"
              class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm {{ request()->is('checklist/report*') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }} transition">
             <i class="fa-solid fa-chart-bar w-5 text-center"></i> Report

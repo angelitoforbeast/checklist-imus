@@ -182,6 +182,8 @@
                             @foreach($imageFiles as $f)
                               <img src="{{ Storage::url($f->file_path) }}"
                                    data-lightbox-src="{{ Storage::url($f->file_path) }}"
+                                   data-lightbox-sender="{{ $sub->user->name ?? 'User' }}"
+                                   data-lightbox-time="{{ $f->created_at->format('M d, Y \u00b7 g:i A') }}"
                                    @click="$dispatch('open-lightbox', '{{ Storage::url($f->file_path) }}')"
                                    class="w-20 h-20 flex-shrink-0 object-cover rounded-2xl border border-green-200 shadow-sm cursor-zoom-in active:scale-95 transition-transform">
                             @endforeach
@@ -389,6 +391,8 @@
                     <div class="overflow-hidden transition-all duration-300" :style="pinExpanded ? 'max-height: 300px' : 'max-height: 60px'">
                       <img src="{{ Storage::url($task->reference_image) }}"
                            data-lightbox-src="{{ Storage::url($task->reference_image) }}"
+                           data-lightbox-sender="Reference Photo"
+                           data-lightbox-time="{{ $task->created_at->format('M d, Y') }}"
                            @click="$dispatch('open-lightbox', '{{ Storage::url($task->reference_image) }}')"
                            class="w-full max-w-[200px] object-cover rounded-xl cursor-zoom-in active:scale-95 transition-transform"
                            :class="pinExpanded ? 'h-auto' : 'h-[60px]'">
@@ -432,6 +436,8 @@
                           <template x-for="(photo, pi) in msg.photos" :key="'p'+mi+'_'+pi">
                             <img :src="photo.url"
                                  :data-lightbox-src="photo.url"
+                                 :data-lightbox-sender="msg.by"
+                                 :data-lightbox-time="msg.time"
                                  @click="$dispatch('open-lightbox', photo.url)"
                                  class="w-28 h-28 object-cover rounded-2xl shadow-sm cursor-zoom-in active:scale-95 transition-transform"
                                  :class="pi === 0 && msg.photos.length === 1 ? 'rounded-tr-md' : ''">
@@ -564,33 +570,76 @@
 
   </div>
 
-  {{-- ===== LIGHTBOX WITH GALLERY NAVIGATION ===== --}}
+  {{-- ===== LIGHTBOX WITH ZOOM + SENDER INFO ===== --}}
   <div x-data="{
            lightbox: false,
            images: [],
            currentIndex: 0,
-           touchStartX: 0,
-           touchEndX: 0,
-           get lightSrc() { return this.images[this.currentIndex] ?? ''; },
+           scale: 1,
+           translateX: 0,
+           translateY: 0,
+           isDragging: false,
+           startX: 0,
+           startY: 0,
+           initialPinchDist: 0,
+           initialPinchScale: 1,
+           get current() { return this.images[this.currentIndex] ?? { src: '', sender: '', time: '' }; },
+           get lightSrc() { return this.current.src; },
+           get senderName() { return this.current.sender; },
+           get senderTime() { return this.current.time; },
            open(src) {
-               // Collect all visible images in the current context
-               const allImgs = Array.from(document.querySelectorAll('[data-lightbox-src]')).map(el => el.dataset.lightboxSrc);
-               // Deduplicate while preserving order
-               this.images = [...new Set(allImgs.length > 0 ? allImgs : [src])];
-               const idx = this.images.indexOf(src);
+               const allEls = Array.from(document.querySelectorAll('[data-lightbox-src]'));
+               const seen = new Set();
+               this.images = allEls.filter(el => {
+                   const s = el.dataset.lightboxSrc;
+                   if (seen.has(s)) return false;
+                   seen.add(s);
+                   return true;
+               }).map(el => ({
+                   src: el.dataset.lightboxSrc,
+                   sender: el.dataset.lightboxSender || 'Unknown',
+                   time: el.dataset.lightboxTime || ''
+               }));
+               if (this.images.length === 0) this.images = [{ src: src, sender: '', time: '' }];
+               const idx = this.images.findIndex(i => i.src === src);
                this.currentIndex = idx >= 0 ? idx : 0;
+               this.resetZoom();
                this.lightbox = true;
            },
-           prev() { if (this.currentIndex > 0) this.currentIndex--; },
-           next() { if (this.currentIndex < this.images.length - 1) this.currentIndex++; },
-           handleSwipeStart(e) { this.touchStartX = e.changedTouches[0].screenX; },
-           handleSwipeEnd(e) {
-               this.touchEndX = e.changedTouches[0].screenX;
-               const diff = this.touchStartX - this.touchEndX;
-               if (Math.abs(diff) > 50) {
-                   if (diff > 0) this.next();
-                   else this.prev();
+           resetZoom() { this.scale = 1; this.translateX = 0; this.translateY = 0; },
+           prev() { if (this.currentIndex > 0) { this.currentIndex--; this.resetZoom(); } },
+           next() { if (this.currentIndex < this.images.length - 1) { this.currentIndex++; this.resetZoom(); } },
+           handleWheel(e) {
+               e.preventDefault();
+               const delta = e.deltaY > 0 ? 0.9 : 1.1;
+               this.scale = Math.min(Math.max(this.scale * delta, 1), 8);
+               if (this.scale === 1) { this.translateX = 0; this.translateY = 0; }
+           },
+           handleTouchStart(e) {
+               if (e.touches.length === 2) {
+                   this.initialPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                   this.initialPinchScale = this.scale;
+               } else if (e.touches.length === 1 && this.scale > 1) {
+                   this.isDragging = true;
+                   this.startX = e.touches[0].clientX - this.translateX;
+                   this.startY = e.touches[0].clientY - this.translateY;
                }
+           },
+           handleTouchMove(e) {
+               e.preventDefault();
+               if (e.touches.length === 2) {
+                   const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                   this.scale = Math.min(Math.max(this.initialPinchScale * (dist / this.initialPinchDist), 1), 8);
+                   if (this.scale === 1) { this.translateX = 0; this.translateY = 0; }
+               } else if (e.touches.length === 1 && this.isDragging) {
+                   this.translateX = e.touches[0].clientX - this.startX;
+                   this.translateY = e.touches[0].clientY - this.startY;
+               }
+           },
+           handleTouchEnd(e) { this.isDragging = false; this.initialPinchDist = 0; },
+           handleDblClick(e) {
+               e.stopPropagation();
+               if (this.scale > 1) { this.resetZoom(); } else { this.scale = 3; }
            }
        }"
        @open-lightbox.window="open($event.detail)"
@@ -599,19 +648,17 @@
        @keydown.arrow-right.window="if (lightbox) next()"
        x-show="lightbox"
        x-transition.opacity
-       @click="lightbox = false"
-       class="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4"
-       style="display:none"
-       @touchstart="handleSwipeStart($event)"
-       @touchend="handleSwipeEnd($event)">
+       @click="if (scale <= 1) lightbox = false"
+       class="fixed inset-0 z-[60] bg-black/90 flex flex-col items-center justify-center"
+       style="display:none">
 
     {{-- Close button --}}
     <button @click="lightbox = false"
-            class="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-xl transition z-10">✕</button>
+            class="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-xl transition z-20">✕</button>
 
     {{-- Counter --}}
     <template x-if="images.length > 1">
-      <div class="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-3 py-1 rounded-full z-10"
+      <div class="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-3 py-1 rounded-full z-20"
            x-text="(currentIndex + 1) + ' / ' + images.length"></div>
     </template>
 
@@ -619,25 +666,34 @@
     <template x-if="images.length > 1">
       <button @click.stop="prev()"
               :class="currentIndex === 0 ? 'opacity-20 pointer-events-none' : 'opacity-80 hover:opacity-100'"
-              class="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-2xl transition z-10">‹</button>
+              class="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-2xl transition z-20">‹</button>
     </template>
 
-    {{-- Image --}}
-    <img :src="lightSrc"
-         class="max-w-full max-h-full rounded-2xl shadow-2xl object-contain transition-all duration-200"
-         @click.stop>
+    {{-- Image with zoom --}}
+    <div class="flex-1 flex items-center justify-center w-full overflow-hidden p-4"
+         @wheel.prevent="handleWheel($event)"
+         @touchstart="handleTouchStart($event)"
+         @touchmove.prevent="handleTouchMove($event)"
+         @touchend="handleTouchEnd($event)">
+      <img :src="lightSrc"
+           :style="'transform: scale(' + scale + ') translate(' + (translateX/scale) + 'px, ' + (translateY/scale) + 'px); transition: ' + (isDragging ? 'none' : 'transform 0.2s ease')"
+           class="max-w-full max-h-full rounded-2xl shadow-2xl object-contain select-none"
+           @click.stop="handleDblClick($event)"
+           draggable="false">
+    </div>
 
     {{-- Next button --}}
     <template x-if="images.length > 1">
       <button @click.stop="next()"
               :class="currentIndex === images.length - 1 ? 'opacity-20 pointer-events-none' : 'opacity-80 hover:opacity-100'"
-              class="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-2xl transition z-10">›</button>
+              class="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-2xl transition z-20">›</button>
     </template>
 
-    {{-- Swipe hint --}}
-    <template x-if="images.length > 1">
-      <p class="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/40 text-xs z-10">Swipe or use arrows to navigate</p>
-    </template>
+    {{-- Sender info caption bar --}}
+    <div class="w-full flex-shrink-0 bg-black/70 px-4 py-3 text-center z-20" @click.stop>
+      <p class="text-white text-sm font-medium" x-text="senderName"></p>
+      <p class="text-white/60 text-xs" x-text="senderTime"></p>
+    </div>
   </div>
 
 </x-layout>

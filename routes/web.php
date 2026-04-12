@@ -20,8 +20,13 @@ Route::post('/logout', function () {
     return redirect('/login');
 })->name('logout');
 
-// Redirect root to checklist
-Route::get('/', fn () => redirect('/checklist'));
+// Redirect root — admin goes to conversations, others to checklist
+Route::get('/', function () {
+    if (Auth::check() && Auth::user()->isAdmin()) {
+        return redirect('/checklist/conversations');
+    }
+    return redirect('/checklist');
+});
 
 // ✅ Daily Checklist (all authenticated users)
 Route::middleware(['web','auth'])->prefix('checklist')->name('checklist.')->group(function () {
