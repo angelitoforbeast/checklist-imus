@@ -255,8 +255,12 @@
                  @endif
                ],
                sentNotes: [
-                 @if($sub?->notes)
-                   { text: {{ json_encode($sub->notes) }}, time: '{{ $sub->updated_at->format('g:i A') }}', ts: {{ $sub->updated_at->timestamp }}, by: '{{ $sub->user->name ?? 'Unknown' }}' },
+                 @if($sub)
+                   @foreach($sub->logs->where('action', 'note_sent')->sortBy('created_at') as $noteLog)
+                     @if($noteLog->notes_snapshot)
+                       { text: {{ json_encode($noteLog->notes_snapshot) }}, time: '{{ $noteLog->created_at->format('g:i A') }}', ts: {{ $noteLog->created_at->timestamp }}, by: '{{ $noteLog->user->name ?? $sub->user->name ?? 'Unknown' }}' },
+                     @endif
+                   @endforeach
                  @endif
                ],
                adminComments: [

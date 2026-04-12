@@ -229,7 +229,7 @@
         $lastTime = null;
         foreach ($imageFiles->sortBy('created_at') as $file) {
           $fileTime = $file->created_at;
-          if ($lastTime && $fileTime->diffInSeconds($lastTime) > 120) {
+          if ($lastTime && abs($fileTime->diffInSeconds($lastTime)) > 120) {
             if ($currentBatch->isNotEmpty()) {
               $photoBatches->push(['type' => 'photo_batch', 'files' => $currentBatch, 'time' => $currentBatch->first()->created_at, 'user' => $sub->user]);
             }
@@ -248,7 +248,7 @@
         // Add notes from submission_logs (note_sent)
         if ($sub) {
           foreach ($sub->logs->where('action', 'note_sent')->sortBy('created_at') as $log) {
-            $timeline->push(['type' => 'note', 'text' => $log->details ?? '', 'time' => $log->created_at, 'user' => $log->user]);
+            $timeline->push(['type' => 'note', 'text' => $log->notes_snapshot ?? '', 'time' => $log->created_at, 'user' => $log->user]);
           }
         }
 
