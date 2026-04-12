@@ -295,8 +295,8 @@ class ChecklistController extends Controller
 
     public function analyzeSubmission(Request $request, ChecklistSubmission $submission)
     {
-        $submission->load(['task', 'files']);
-        $task     = $submission->task;
+        $submission->load(['files']);
+        $task     = $submission->task ?? ChecklistTask::withTrashed()->find($submission->checklist_task_id);
         $imgFiles = $submission->files->filter(fn($f) => $f->isImage());
 
         if (!$task) {
@@ -384,8 +384,8 @@ class ChecklistController extends Controller
 
     public function approvalCheck(Request $request, ChecklistSubmission $submission)
     {
-        $submission->load(['task', 'files']);
-        $task     = $submission->task;
+        $submission->load(['files']);
+        $task     = $submission->task ?? ChecklistTask::withTrashed()->find($submission->checklist_task_id);
         $imgFiles = $submission->files->filter(fn($f) => $f->isImage());
 
         if (!$task) {
