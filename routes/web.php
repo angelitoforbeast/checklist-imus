@@ -42,6 +42,8 @@ Route::middleware(['web','auth'])->prefix('checklist')->name('checklist.')->grou
 
     Route::post('/submission/{submission}/analyze', [ChecklistController::class, 'analyzeSubmission'])->name('analyze');
     Route::get('/submission/{submission}/analysis-logs', [ChecklistController::class, 'getAnalysisLogs'])->name('analysis-logs');
+    Route::post('/submission/{submission}/approval-check', [ChecklistController::class, 'approvalCheck'])->name('approval-check');
+    Route::get('/submission/{submission}/approval-logs', [ChecklistController::class, 'getApprovalLogs'])->name('approval-logs');
 });
 
 // 🔐 Admin Panel — Roles & Users

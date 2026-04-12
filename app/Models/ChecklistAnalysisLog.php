@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class ChecklistAnalysisLog extends Model
 {
-    protected $fillable = ['submission_id', 'user_id', 'prompt_used', 'analysis_result'];
+    protected $fillable = ['submission_id', 'user_id', 'log_type', 'prompt_used', 'analysis_result', 'verdict'];
 
     public function submission()
     {
