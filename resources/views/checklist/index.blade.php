@@ -508,6 +508,8 @@
                      if (data.success) {
                        const isVid = file.type.startsWith('video/');
                        this.sentPhotos.push({ url: data.url, name: data.name, time: data.uploaded_at, ts: Math.floor(Date.now()/1000), by: data.uploaded_by, isVideo: isVid });
+                       this.newContentSent = true;
+                       this.taskCompleted = false;
                        // Auto-start task if not started yet
                        if (!this.taskStarted) {
                          this.taskStarted = true;
@@ -530,8 +532,30 @@
                submitting: false,
                taskCompleted: false,
                taskType: '{{ $task->type }}',
+               // Track whether user has sent NEW content in this session
+               // true = user has new content ready to submit (show Done button)
+               // false = no new content yet (hide Done button)
+               @php
+                 $showDoneInitially = false;
+                 if ($sub && $sub->status !== 'completed') {
+                   $lastRevertOrSubmit = $sub->logs->whereIn('action', ['submitted','updated','reverted'])->sortByDesc('created_at')->first();
+                   if (!$lastRevertOrSubmit) {
+                     // Never submitted or reverted - if has content, show Done
+                     $showDoneInitially = ($subFiles->count() > 0 || $sub->logs->where('action', 'note_sent')->count() > 0);
+                   } elseif ($lastRevertOrSubmit->action === 'reverted') {
+                     // Was reverted - check if new content sent AFTER the revert
+                     $revertTime = $lastRevertOrSubmit->created_at;
+                     $newPhotos = $subFiles->filter(fn($f) => $f->created_at->gt($revertTime))->count();
+                     $newNotes = $sub->logs->where('action', 'note_sent')->filter(fn($l) => $l->created_at->gt($revertTime))->count();
+                     $showDoneInitially = ($newPhotos > 0 || $newNotes > 0);
+                   }
+                   // If last action was submitted/updated, don't show (already submitted)
+                 }
+               @endphp
+               newContentSent: {{ $showDoneInitially ? 'true' : 'false' }},
                get requirementsMet() {
                  if (!this.taskStarted) return false;
+                 if (!this.newContentSent) return false;
                  const hasPhotos = this.sentPhotos.length > 0;
                  const hasNotes = this.sentNotes.length > 0;
                  switch (this.taskType) {
@@ -561,6 +585,7 @@
                    const data = await res.json();
                    if (data.success) {
                      this.taskCompleted = true;
+                     this.newContentSent = false;
                    } else {
                      alert(data.error || 'Failed to submit. Please try again.');
                    }
@@ -585,6 +610,8 @@
                    if (data.success) {
                      this.sentNotes.push({ text: data.notes, time: data.sent_at, ts: Math.floor(Date.now()/1000), by: data.sent_by });
                      this.noteText = '';
+                     this.newContentSent = true;
+                     this.taskCompleted = false;
                      // Auto-start task if not started yet
                      if (!this.taskStarted) {
                        this.taskStarted = true;
@@ -827,22 +854,19 @@
             </div>
           </template>
 
-          {{-- Completed confirmation --}}
-          <template x-if="taskCompleted">
-            <div class="flex-shrink-0 bg-green-50 border-t border-green-200 px-4 py-3">
-              <div class="max-w-lg mx-auto">
-                <button @click="clearFocus(); setTimeout(() => window.location.reload(), 100);"
-                        class="w-full py-3.5 rounded-2xl font-bold text-base text-white bg-green-500 active:scale-[0.98] shadow-lg"
-                        style="box-shadow: 0 10px 15px -3px rgba(34,197,94,0.3)">
-                  ✅ Done - Go Back
-                </button>
+          {{-- Completed status bar --}}
+          <template x-if="taskCompleted && !newContentSent">
+            <div class="flex-shrink-0 bg-green-50 border-t border-green-200 px-4 py-2">
+              <div class="max-w-lg mx-auto flex items-center justify-between">
+                <span class="text-sm font-semibold text-green-700">✅ Submitted</span>
+                <span class="text-xs text-green-600">You can still add more files or notes</span>
               </div>
             </div>
           </template>
 
           {{-- ===== MESSENGER BOTTOM BAR ===== --}}
           <div class="flex-shrink-0 border-t border-gray-200 bg-white" style="padding-bottom: env(safe-area-inset-bottom, 0px);"
-               x-show="taskStarted && !taskCompleted">
+               x-show="taskStarted">
             <div class="max-w-lg mx-auto px-3 py-2">
               <div class="flex items-end gap-2">
 
