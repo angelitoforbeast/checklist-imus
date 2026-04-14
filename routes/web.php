@@ -37,6 +37,7 @@ Route::middleware(['web','auth'])->prefix('checklist')->name('checklist.')->grou
     Route::post('/{task}/submit', [ChecklistController::class, 'submit'])->name('submit');
     Route::post("/{task}/upload-photo", [ChecklistController::class, "uploadPhoto"])->name("upload-photo");
     Route::post("/{task}/send-note", [ChecklistController::class, "sendNote"])->name("send-note");
+    Route::post('/{task}/start', [ChecklistController::class, 'startTask'])->name('start-task');
     Route::delete('/submission/{submission}', [ChecklistController::class, 'deleteSubmission'])->name('delete-submission');
     Route::delete('/files/{file}', [ChecklistController::class, 'deleteFile'])->name('delete-file');
 

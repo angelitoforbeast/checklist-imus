@@ -16,52 +16,154 @@ use Carbon\Carbon;
 
 class ChecklistController extends Controller
 {
+    /**
+     * Helper: filter tasks visible to the current user.
+     */
+    private function filterTasksForUser($tasks, $user)
+    {
+        if ($user->isAdmin()) return $tasks;
+
+        return $tasks->filter(function ($task) use ($user) {
+            $assignedIds = $task->assignedUsers->pluck('id')->toArray();
+            return empty($assignedIds) || in_array($user->id, $assignedIds);
+        })->values();
+    }
+
+    /**
+     * Helper: filter out tasks not scheduled for the given date.
+     */
+    private function filterBySchedule($tasks, string $date)
+    {
+        return $tasks->filter(fn($t) => $t->isScheduledFor($date))->values();
+    }
+
+    /**
+     * Helper: filter out completed "once" tasks from previous days.
+     */
+    private function filterCompletedOnceTasks($tasks, string $today)
+    {
+        $onceTaskIds = $tasks->where('frequency', 'once')->pluck('id');
+        if ($onceTaskIds->isEmpty()) return $tasks;
+
+        $completedOnceIds = ChecklistSubmission::whereIn('checklist_task_id', $onceTaskIds)
+            ->where('status', 'completed')
+            ->where('date', '<', $today)
+            ->pluck('checklist_task_id')
+            ->unique();
+
+        if ($completedOnceIds->isEmpty()) return $tasks;
+
+        return $tasks->reject(fn($t) => $completedOnceIds->contains($t->id))->values();
+    }
+
+    /**
+     * Helper: load submissions for a date.
+     * For GROUP mode: keyed by task_id (one submission per task).
+     * For INDIVIDUAL mode: grouped by task_id (multiple submissions per task).
+     * Returns both collections for the views to use.
+     */
+    private function loadSubmissions($taskIds, string $date, $user = null)
+    {
+        $query = ChecklistSubmission::with(['user', 'files', 'logs.user'])
+            ->where('date', $date)
+            ->whereIn('checklist_task_id', $taskIds);
+
+        $allSubmissions = $query->get();
+
+        // For backward compatibility: keyed by task_id (first/only submission per task)
+        // For group mode tasks, there's only one submission per task
+        // For individual mode tasks, we need all submissions grouped
+        $byTask = $allSubmissions->groupBy('checklist_task_id');
+
+        // Legacy format: one submission per task (for group mode)
+        $singleByTask = collect();
+        foreach ($byTask as $taskId => $subs) {
+            $singleByTask[$taskId] = $subs->first();
+        }
+
+        return [$singleByTask, $byTask];
+    }
+
+    /**
+     * Helper: determine if a task is "done" considering submission mode.
+     * GROUP: done if any submission exists with status=completed
+     * INDIVIDUAL: done if ALL assigned users have a completed submission
+     */
+    private function isTaskDone(ChecklistTask $task, $submissionsForTask): bool
+    {
+        if (!$submissionsForTask || $submissionsForTask->isEmpty()) return false;
+
+        if ($task->submission_mode === 'individual') {
+            $assignedIds = $task->assignedUsers->pluck('id')->toArray();
+            if (empty($assignedIds)) {
+                // No specific assignment = treat as group
+                return $submissionsForTask->where('status', 'completed')->isNotEmpty();
+            }
+            // Check each assigned user has a completed submission
+            foreach ($assignedIds as $userId) {
+                $userSub = $submissionsForTask->firstWhere('user_id', $userId);
+                if (!$userSub || $userSub->status !== 'completed') return false;
+            }
+            return true;
+        }
+
+        // Group mode or announcement
+        return $submissionsForTask->where('status', 'completed')->isNotEmpty();
+    }
+
+    // =========================================================================
+    // USER VIEW
+    // =========================================================================
+
     public function index()
     {
         $today = now()->toDateString();
         $user  = Auth::user();
 
-        $tasksQuery = ChecklistTask::with(['assignedUsers', 'referenceFiles'])
+        $allTasks = ChecklistTask::with(['assignedUsers', 'referenceFiles'])
             ->where('is_active', true)
             ->orderBy('sort_order')
-            ->orderBy('id');
+            ->orderBy('id')
+            ->get();
 
-        $allTasks = $tasksQuery->get();
+        $tasks = $this->filterTasksForUser($allTasks, $user);
+        $tasks = $this->filterBySchedule($tasks, $today);
+        $tasks = $this->filterCompletedOnceTasks($tasks, $today);
 
-        // Non-admin users only see tasks assigned to them (or tasks with no assignment = everyone)
-        if (!$user->isAdmin()) {
-            $tasks = $allTasks->filter(function ($task) use ($user) {
-                $assignedIds = $task->assignedUsers->pluck('id')->toArray();
-                return empty($assignedIds) || in_array($user->id, $assignedIds);
-            })->values();
-        } else {
-            $tasks = $allTasks;
-        }
+        // Load all submissions for today
+        [$submissionsByTask, $allSubmissionsByTask] = $this->loadSubmissions($tasks->pluck('id'), $today, $user);
 
-        // Filter out "once" tasks that have already been completed on any previous day
-        $onceTaskIds = $tasks->where('frequency', 'once')->pluck('id');
-        if ($onceTaskIds->isNotEmpty()) {
-            $completedOnceIds = ChecklistSubmission::whereIn('checklist_task_id', $onceTaskIds)
-                ->where('status', 'completed')
-                ->where('date', '<', $today)
-                ->pluck('checklist_task_id')
-                ->unique();
-            if ($completedOnceIds->isNotEmpty()) {
-                $tasks = $tasks->reject(fn($t) => $completedOnceIds->contains($t->id))->values();
+        // For individual mode tasks, the current user's submission
+        $userSubmissionsByTask = collect();
+        foreach ($tasks as $task) {
+            if ($task->submission_mode === 'individual') {
+                $taskSubs = $allSubmissionsByTask->get($task->id, collect());
+                $userSub = $taskSubs->firstWhere('user_id', $user->id);
+                if ($userSub) {
+                    $userSubmissionsByTask[$task->id] = $userSub;
+                }
+            } else {
+                // Group mode: use the single submission
+                if ($submissionsByTask->has($task->id)) {
+                    $userSubmissionsByTask[$task->id] = $submissionsByTask[$task->id];
+                }
             }
         }
 
-        // One submission per task per day — keyed by task_id
-        $submissionsByTask = ChecklistSubmission::with(['user', 'files', 'logs.user'])
-            ->where('date', $today)
-            ->whereIn('checklist_task_id', $tasks->pluck('id'))
-            ->get()
-            ->keyBy('checklist_task_id');
-
-        $doneCount  = $submissionsByTask->where('status', 'completed')->count();
+        // Calculate done count based on submission mode
+        $doneCount = 0;
+        foreach ($tasks as $task) {
+            $taskSubs = $allSubmissionsByTask->get($task->id, collect());
+            if ($task->submission_mode === 'individual') {
+                $userSub = $taskSubs->firstWhere('user_id', $user->id);
+                if ($userSub && $userSub->status === 'completed') $doneCount++;
+            } else {
+                if ($taskSubs->where('status', 'completed')->isNotEmpty()) $doneCount++;
+            }
+        }
         $totalTasks = $tasks->count();
 
-        // Load admin comments for today, grouped by task_id
+        // Load admin comments for today
         $commentsByTask = \App\Models\ChecklistTaskComment::with('user')
             ->where('date', $today)
             ->orderBy('created_at')
@@ -69,75 +171,73 @@ class ChecklistController extends Controller
             ->groupBy('checklist_task_id');
 
         return view('checklist.index', compact(
-            'tasks', 'submissionsByTask',
+            'tasks', 'userSubmissionsByTask', 'submissionsByTask',
             'today', 'doneCount', 'totalTasks', 'commentsByTask'
         ));
     }
 
     /**
      * Lightweight polling endpoint for user view.
-     * Returns current task statuses + submission counts so the UI can update silently.
      */
     public function pollStatus()
     {
         $today = now()->toDateString();
         $user  = Auth::user();
 
-        $tasks = ChecklistTask::with(['assignedUsers', 'referenceFiles'])
+        $allTasks = ChecklistTask::with('assignedUsers')
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
 
-        if (!$user->isAdmin()) {
-            $tasks = $tasks->filter(function ($task) use ($user) {
-                $assignedIds = $task->assignedUsers->pluck('id')->toArray();
-                return empty($assignedIds) || in_array($user->id, $assignedIds);
-            })->values();
-        }
+        $tasks = $this->filterTasksForUser($allTasks, $user);
+        $tasks = $this->filterBySchedule($tasks, $today);
+        $tasks = $this->filterCompletedOnceTasks($tasks, $today);
 
-        // Filter out completed once-tasks
-        $onceTaskIds = $tasks->where('frequency', 'once')->pluck('id');
-        if ($onceTaskIds->isNotEmpty()) {
-            $completedOnceIds = ChecklistSubmission::whereIn('checklist_task_id', $onceTaskIds)
-                ->where('status', 'completed')
-                ->where('date', '<', $today)
-                ->pluck('checklist_task_id')
-                ->unique();
-            if ($completedOnceIds->isNotEmpty()) {
-                $tasks = $tasks->reject(fn($t) => $completedOnceIds->contains($t->id))->values();
-            }
-        }
-
-        $submissions = ChecklistSubmission::with('files')
-            ->where('date', $today)
-            ->whereIn('checklist_task_id', $tasks->pluck('id'))
-            ->get()
-            ->keyBy('checklist_task_id');
+        [$submissionsByTask, $allSubmissionsByTask] = $this->loadSubmissions($tasks->pluck('id'), $today, $user);
 
         $comments = \App\Models\ChecklistTaskComment::where('date', $today)
             ->get()
             ->groupBy('checklist_task_id');
 
         $result = [];
+        $doneCount = 0;
         foreach ($tasks as $task) {
-            $sub = $submissions->get($task->id);
+            $taskSubs = $allSubmissionsByTask->get($task->id, collect());
+
+            if ($task->submission_mode === 'individual') {
+                $userSub = $taskSubs->firstWhere('user_id', $user->id);
+                $status = $userSub ? $userSub->status : 'not_started';
+                $started = $userSub && $userSub->started_at ? true : false;
+                $fileCount = $userSub ? $userSub->files->count() : 0;
+                if ($status === 'completed') $doneCount++;
+            } else {
+                $sub = $submissionsByTask->get($task->id);
+                $status = $sub ? $sub->status : 'not_started';
+                $started = $sub && $sub->started_at ? true : false;
+                $fileCount = $sub ? $sub->files->count() : 0;
+                if ($status === 'completed') $doneCount++;
+            }
+
             $result[] = [
                 'task_id'       => $task->id,
-                'status'        => $sub ? $sub->status : 'pending',
-                'file_count'    => $sub ? $sub->files->count() : 0,
-                'notes'         => $sub ? $sub->notes : null,
-                'updated_at'    => $sub ? $sub->updated_at->toIso8601String() : null,
+                'status'        => $status,
+                'started'       => $started,
+                'file_count'    => $fileCount,
                 'comment_count' => isset($comments[$task->id]) ? $comments[$task->id]->count() : 0,
             ];
         }
 
         return response()->json([
             'tasks'      => $result,
-            'done_count' => collect($result)->where('status', 'completed')->count(),
+            'done_count' => $doneCount,
             'total'      => count($result),
         ]);
     }
+
+    // =========================================================================
+    // REPORT
+    // =========================================================================
 
     public function report(Request $request)
     {
@@ -145,7 +245,7 @@ class ChecklistController extends Controller
         $roleFilter = $request->query('role', '');
 
         try {
-            $dateObj = \Carbon\Carbon::parse($date);
+            $dateObj = Carbon::parse($date);
         } catch (\Exception $e) {
             $dateObj = now();
         }
@@ -160,7 +260,6 @@ class ChecklistController extends Controller
                 ->get();
         } else {
             $endOfDay = $dateObj->copy()->endOfDay();
-
             $tasks = ChecklistTask::withTrashed()
                 ->with('assignedUsers')
                 ->whereDate('created_at', '<=', $dateObj->toDateString())
@@ -196,21 +295,17 @@ class ChecklistController extends Controller
         $prevDate = $dateObj->copy()->subDay()->toDateString();
         $nextDate = $dateObj->copy()->addDay()->toDateString();
 
-        // Role filter: filter tasks by assigned users' role
         $roles = \App\Models\Role::orderBy('name')->get();
         if ($roleFilter) {
-            $roleUserIds = \App\Models\User::where('role_id', $roleFilter)->pluck('id')->toArray();
+            $roleUserIds = User::where('role_id', $roleFilter)->pluck('id')->toArray();
             $tasks = $tasks->filter(function ($task) use ($roleUserIds) {
                 $assignedIds = $task->assignedUsers->pluck('id')->toArray();
-                // Show task if it has no assignment (everyone) or if any assigned user is in the filtered role
                 return empty($assignedIds) || !empty(array_intersect($assignedIds, $roleUserIds));
             })->values();
-            // Recalculate counts after filter
             $doneCount = $tasks->filter(fn($t) => $submissionsByTask->has($t->id) && $submissionsByTask->get($t->id)->status === 'completed')->count();
             $totalTasks = $tasks->count();
         }
 
-        // Load admin comments for this date, grouped by task_id
         $commentsByTask = \App\Models\ChecklistTaskComment::with('user')
             ->where('date', $dateObj->toDateString())
             ->orderBy('created_at')
@@ -225,13 +320,17 @@ class ChecklistController extends Controller
         ));
     }
 
+    // =========================================================================
+    // CONVERSATIONS (ADMIN)
+    // =========================================================================
+
     public function conversations(Request $request)
     {
         $date = $request->query('date', now()->toDateString());
         $roleFilter = $request->query('role', '');
 
         try {
-            $dateObj = \Carbon\Carbon::parse($date);
+            $dateObj = Carbon::parse($date);
         } catch (\Exception $e) {
             $dateObj = now();
         }
@@ -258,10 +357,18 @@ class ChecklistController extends Controller
                 ->get();
         }
 
-        $submissionsByTask = ChecklistSubmission::with(['user', 'files', 'logs.user'])
+        // Load ALL submissions for the date (for individual mode we need per-user)
+        $allSubmissions = ChecklistSubmission::with(['user', 'files', 'logs.user'])
             ->where('date', $dateObj->toDateString())
-            ->get()
-            ->keyBy('checklist_task_id');
+            ->get();
+
+        $allSubmissionsByTask = $allSubmissions->groupBy('checklist_task_id');
+
+        // Legacy single-submission-per-task (for group mode backward compat)
+        $submissionsByTask = collect();
+        foreach ($allSubmissionsByTask as $taskId => $subs) {
+            $submissionsByTask[$taskId] = $subs->first();
+        }
 
         if (!$isToday) {
             $missingIds = $submissionsByTask->keys()->diff($tasks->pluck('id'));
@@ -282,7 +389,7 @@ class ChecklistController extends Controller
 
         $roles = \App\Models\Role::orderBy('name')->get();
         if ($roleFilter) {
-            $roleUserIds = \App\Models\User::where('role_id', $roleFilter)->pluck('id')->toArray();
+            $roleUserIds = User::where('role_id', $roleFilter)->pluck('id')->toArray();
             $tasks = $tasks->filter(function ($task) use ($roleUserIds) {
                 $assignedIds = $task->assignedUsers->pluck('id')->toArray();
                 return empty($assignedIds) || !empty(array_intersect($assignedIds, $roleUserIds));
@@ -297,33 +404,31 @@ class ChecklistController extends Controller
             ->get()
             ->groupBy('checklist_task_id');
 
-        // Sort tasks: latest submitted first, then pending tasks by sort_order
+        // Sort tasks: latest submitted first
         $tasks = $tasks->sort(function ($a, $b) use ($submissionsByTask) {
             $subA = $submissionsByTask->get($a->id);
             $subB = $submissionsByTask->get($b->id);
             $hasA = $subA !== null;
             $hasB = $subB !== null;
-
-            // Tasks with submissions come first
             if ($hasA && !$hasB) return -1;
             if (!$hasA && $hasB) return 1;
-
-            // Both have submissions: sort by latest updated_at descending
             if ($hasA && $hasB) {
                 return $subB->updated_at->timestamp - $subA->updated_at->timestamp;
             }
-
-            // Neither has submissions: keep original sort_order
             return ($a->sort_order ?? 0) - ($b->sort_order ?? 0);
         })->values();
 
         return view('checklist.conversations', compact(
-            'tasks', 'submissionsByTask',
+            'tasks', 'submissionsByTask', 'allSubmissionsByTask',
             'doneCount', 'totalTasks',
             'dateObj', 'prevDate', 'nextDate', 'isToday',
             'roles', 'roleFilter', 'commentsByTask'
         ));
     }
+
+    // =========================================================================
+    // MANAGE TASKS
+    // =========================================================================
 
     public function manage()
     {
@@ -337,22 +442,110 @@ class ChecklistController extends Controller
         return view('checklist.manage', compact('allTasks', 'allUsers'));
     }
 
+    // =========================================================================
+    // TASK START (new: conversation-first flow)
+    // =========================================================================
+
+    /**
+     * AJAX: User starts a task — creates submission with started_at timestamp.
+     */
+    public function startTask(Request $request, ChecklistTask $task)
+    {
+        $today = now()->toDateString();
+        $user = Auth::user();
+
+        $assignedIds = $task->assignedUsers()->pluck('users.id')->toArray();
+        if (!$user->isAdmin() && !empty($assignedIds) && !in_array($user->id, $assignedIds)) {
+            return response()->json(['error' => 'Not assigned.'], 403);
+        }
+
+        // For individual mode: each user gets their own submission
+        // For group mode: one submission per task
+        $lookupKey = ['checklist_task_id' => $task->id, 'date' => $today];
+        if ($task->submission_mode === 'individual') {
+            $lookupKey['user_id'] = $user->id;
+        }
+
+        $submission = ChecklistSubmission::firstOrCreate(
+            $lookupKey,
+            ['user_id' => $user->id, 'status' => 'pending', 'started_at' => now()]
+        );
+
+        // If already exists but not started yet, set started_at
+        if (!$submission->started_at) {
+            $submission->started_at = now();
+            $submission->save();
+        }
+
+        // Log the start event
+        ChecklistSubmissionLog::create([
+            'checklist_submission_id' => $submission->id,
+            'user_id'                 => $user->id,
+            'action'                  => 'started',
+            'notes_snapshot'          => null,
+            'file_count'              => 0,
+            'created_at'              => now(),
+        ]);
+
+        return response()->json([
+            'success'    => true,
+            'started_at' => $submission->started_at->format('g:i A'),
+            'user'       => $user->name,
+        ]);
+    }
+
+    // =========================================================================
+    // SUBMIT (updated for individual mode)
+    // =========================================================================
+
     public function submit(Request $request, ChecklistTask $task)
     {
         $today = now()->toDateString();
+        $user = Auth::user();
 
         $assignedIds = $task->assignedUsers()->pluck('users.id')->toArray();
-        if (!empty($assignedIds) && !in_array(Auth::id(), $assignedIds)) {
+        if (!$user->isAdmin() && !empty($assignedIds) && !in_array($user->id, $assignedIds)) {
             return back()->with('error', 'You are not assigned to this task.');
+        }
+
+        // Handle announcement type — just acknowledge
+        if ($task->type === 'announcement') {
+            $lookupKey = ['checklist_task_id' => $task->id, 'date' => $today];
+            // Announcements are always individual
+            $lookupKey['user_id'] = $user->id;
+
+            $submission = ChecklistSubmission::firstOrCreate(
+                $lookupKey,
+                ['user_id' => $user->id, 'status' => 'completed']
+            );
+
+            if ($submission->status !== 'completed') {
+                $submission->status = 'completed';
+                $submission->save();
+            }
+
+            ChecklistSubmissionLog::create([
+                'checklist_submission_id' => $submission->id,
+                'user_id'                 => $user->id,
+                'action'                  => 'acknowledged',
+                'notes_snapshot'          => null,
+                'file_count'              => 0,
+                'created_at'              => now(),
+            ]);
+
+            return back()->with('success', "'{$task->title}' acknowledged!");
         }
 
         $imageMimes = 'jpg,jpeg,png,gif,webp,mp4,mov,avi,mkv,webm,3gp';
         $anyMimes   = 'jpg,jpeg,png,gif,webp,mp4,mov,avi,mkv,webm,3gp,pdf,doc,docx,xls,xlsx,csv';
 
-        $existing = ChecklistSubmission::with('files')->where([
-            'checklist_task_id' => $task->id,
-            'date'              => $today,
-        ])->first();
+        // Determine lookup key based on submission mode
+        $lookupKey = ['checklist_task_id' => $task->id, 'date' => $today];
+        if ($task->submission_mode === 'individual') {
+            $lookupKey['user_id'] = $user->id;
+        }
+
+        $existing = ChecklistSubmission::with('files')->where($lookupKey)->first();
 
         $isNew            = $existing === null;
         $hasExistingFiles = $existing && ($existing->files->count() > 0 || $existing->file_path);
@@ -363,7 +556,6 @@ class ChecklistController extends Controller
             $rules['files']   = $hasExistingFiles ? 'nullable|array|max:10' : 'required|array|min:1|max:10';
             $rules['files.*'] = "file|mimes:{$imageMimes}";
         } elseif ($task->type === 'photo_note') {
-            // Photo required, note optional
             $rules['files']   = $hasExistingFiles ? 'nullable|array|max:10' : 'required|array|min:1|max:10';
             $rules['files.*'] = "file|mimes:{$imageMimes}";
             $rules['notes']   = 'nullable|string|max:2000';
@@ -378,20 +570,25 @@ class ChecklistController extends Controller
 
         $request->validate($rules);
 
-        // Extra check: for photo-required types, ensure files are actually present
         if (in_array($task->type, ['photo', 'photo_note', 'both']) && !$hasExistingFiles && !$request->hasFile('files')) {
             return back()->withErrors(['files' => 'At least one photo is required.'])->withInput();
         }
 
         $submission = ChecklistSubmission::updateOrCreate(
-            ['checklist_task_id' => $task->id, 'date' => $today],
-            ['notes' => $request->notes, 'user_id' => $isNew ? Auth::id() : $existing->user_id]
+            $lookupKey,
+            ['notes' => $request->notes, 'user_id' => $isNew ? $user->id : $existing->user_id, 'status' => 'completed']
         );
+
+        // Set started_at if not already set
+        if (!$submission->started_at) {
+            $submission->started_at = now();
+            $submission->save();
+        }
 
         $fileCount = $request->hasFile('files') ? count($request->file('files')) : ($submission->files()->count());
         ChecklistSubmissionLog::create([
             'checklist_submission_id' => $submission->id,
-            'user_id'                 => Auth::id(),
+            'user_id'                 => $user->id,
             'action'                  => $isNew ? 'submitted' : 'updated',
             'notes_snapshot'          => $request->notes ? \Str::limit($request->notes, 200) : null,
             'file_count'              => $fileCount,
@@ -413,6 +610,10 @@ class ChecklistController extends Controller
         return back()->with('success', "'{$task->title}' submitted!");
     }
 
+    // =========================================================================
+    // DELETE SUBMISSION
+    // =========================================================================
+
     public function deleteSubmission(ChecklistSubmission $submission)
     {
         if ($submission->user_id !== Auth::id() && !Auth::user()?->isAdmin()) {
@@ -430,23 +631,19 @@ class ChecklistController extends Controller
         return back()->with('success', 'Submission removed.');
     }
 
-    /**
-     * Revert a completed submission back to pending.
-     * Keeps all data (photos, notes, analysis) but sets status to 'pending'.
-     * User must re-submit to mark it completed again.
-     * Admin only — accessible from the report page.
-     */
+    // =========================================================================
+    // REVERT SUBMISSION
+    // =========================================================================
+
     public function revertSubmission(ChecklistSubmission $submission)
     {
         if (!Auth::user()?->isAdmin()) {
             abort(403);
         }
 
-        // Set status to pending (keep all data)
         $submission->status = 'pending';
         $submission->save();
 
-        // Log the revert action
         $submission->logs()->create([
             'user_id' => Auth::id(),
             'action' => 'reverted',
@@ -457,9 +654,10 @@ class ChecklistController extends Controller
         return back()->with('success', 'Task reverted to pending. User needs to re-submit.');
     }
 
-    /**
-     * Admin sends a comment/message on a task (visible in user's Messenger chat view).
-     */
+    // =========================================================================
+    // ADMIN COMMENT
+    // =========================================================================
+
     public function sendComment(Request $request, ChecklistTask $task)
     {
         if (!Auth::user()?->isAdmin()) {
@@ -481,6 +679,10 @@ class ChecklistController extends Controller
         return response()->json(['success' => true, 'comment_id' => $comment->id]);
     }
 
+    // =========================================================================
+    // DELETE FILE
+    // =========================================================================
+
     public function deleteFile(ChecklistSubmissionFile $file)
     {
         $submission = $file->submission;
@@ -495,22 +697,37 @@ class ChecklistController extends Controller
         return back()->with('success', 'File removed.');
     }
 
+    // =========================================================================
+    // STORE TASK
+    // =========================================================================
+
     public function storeTask(Request $request)
     {
         $validated = $request->validate([
             'title'             => 'required|string|max:255',
             'description'       => 'nullable|string|max:1000',
-            'type'              => 'required|in:photo,note,any,both,photo_note',
+            'type'              => 'required|in:photo,note,any,both,photo_note,announcement',
             'ai_prompt'         => 'nullable|string|max:2000',
             'approval_prompt'   => 'nullable|string|max:2000',
             'task_time'         => 'nullable|date_format:H:i',
-            'frequency'         => 'nullable|in:daily,once',
+            'frequency'         => 'nullable|in:daily,once,weekly,monthly,custom',
+            'submission_mode'   => 'nullable|in:group,individual',
+            'schedule_days'     => 'nullable|array',
+            'schedule_days.*'   => 'integer|min:0|max:31',
+            'schedule_dates'    => 'nullable|array',
+            'schedule_dates.*'  => 'date',
+            'start_date'        => 'nullable|date',
+            'end_date'          => 'nullable|date|after_or_equal:start_date',
             'reference_image'   => 'nullable|image',
             'reference_files'   => 'nullable|array',
             'reference_files.*' => 'file|mimes:jpg,jpeg,png,gif,webp,mp4,mov,avi,mkv,webm,3gp',
         ]);
 
-        // Legacy single reference_image support
+        // Announcements are always individual
+        if (($validated['type'] ?? '') === 'announcement') {
+            $validated['submission_mode'] = 'individual';
+        }
+
         $imagePath = null;
         if ($request->hasFile('reference_image')) {
             $imagePath = $request->file('reference_image')->store('task-references', 'public');
@@ -518,13 +735,15 @@ class ChecklistController extends Controller
 
         $task = ChecklistTask::create([
             ...$validated,
-            'reference_image' => $imagePath,
-            'frequency'  => $validated['frequency'] ?? 'daily',
-            'sort_order' => (ChecklistTask::max('sort_order') ?? 0) + 1,
-            'is_active'  => true,
+            'reference_image'  => $imagePath,
+            'frequency'        => $validated['frequency'] ?? 'daily',
+            'submission_mode'  => $validated['submission_mode'] ?? 'group',
+            'schedule_days'    => $validated['schedule_days'] ?? null,
+            'schedule_dates'   => $validated['schedule_dates'] ?? null,
+            'sort_order'       => (ChecklistTask::max('sort_order') ?? 0) + 1,
+            'is_active'        => true,
         ]);
 
-        // Handle multiple reference files
         if ($request->hasFile('reference_files')) {
             foreach ($request->file('reference_files') as $i => $file) {
                 $task->referenceFiles()->create([
@@ -542,21 +761,36 @@ class ChecklistController extends Controller
         return back()->with('success', 'Task added!');
     }
 
+    // =========================================================================
+    // UPDATE TASK
+    // =========================================================================
+
     public function updateTask(Request $request, ChecklistTask $task)
     {
         $validated = $request->validate([
             'title'             => 'required|string|max:255',
             'description'       => 'nullable|string|max:1000',
-            'type'              => 'required|in:photo,note,any,both,photo_note',
+            'type'              => 'required|in:photo,note,any,both,photo_note,announcement',
             'is_active'         => 'boolean',
             'ai_prompt'         => 'nullable|string|max:2000',
             'approval_prompt'   => 'nullable|string|max:2000',
             'task_time'         => 'nullable|date_format:H:i',
-            'frequency'         => 'nullable|in:daily,once',
+            'frequency'         => 'nullable|in:daily,once,weekly,monthly,custom',
+            'submission_mode'   => 'nullable|in:group,individual',
+            'schedule_days'     => 'nullable|array',
+            'schedule_days.*'   => 'integer|min:0|max:31',
+            'schedule_dates'    => 'nullable|array',
+            'schedule_dates.*'  => 'date',
+            'start_date'        => 'nullable|date',
+            'end_date'          => 'nullable|date|after_or_equal:start_date',
             'reference_image'   => 'nullable|image',
             'reference_files'   => 'nullable|array',
             'reference_files.*' => 'file|mimes:jpg,jpeg,png,gif,webp,mp4,mov,avi,mkv,webm,3gp',
         ]);
+
+        if (($validated['type'] ?? '') === 'announcement') {
+            $validated['submission_mode'] = 'individual';
+        }
 
         if ($request->hasFile('reference_image')) {
             if ($task->reference_image) {
@@ -571,7 +805,6 @@ class ChecklistController extends Controller
             $validated['reference_image'] = null;
         }
 
-        // Handle deleting specific reference files
         if ($request->input('delete_reference_files')) {
             $deleteIds = array_filter((array) $request->input('delete_reference_files'));
             foreach ($task->referenceFiles()->whereIn('id', $deleteIds)->get() as $rf) {
@@ -580,7 +813,6 @@ class ChecklistController extends Controller
             }
         }
 
-        // Handle adding new reference files
         if ($request->hasFile('reference_files')) {
             $nextOrder = ($task->referenceFiles()->max('sort_order') ?? -1) + 1;
             foreach ($request->file('reference_files') as $i => $file) {
@@ -601,11 +833,19 @@ class ChecklistController extends Controller
         return back()->with('success', 'Task updated!');
     }
 
+    // =========================================================================
+    // DESTROY TASK
+    // =========================================================================
+
     public function destroyTask(ChecklistTask $task)
     {
         $task->delete();
         return back()->with('success', 'Task deleted.');
     }
+
+    // =========================================================================
+    // REORDER TASKS
+    // =========================================================================
 
     public function reorderTasks(Request $request)
     {
@@ -614,6 +854,10 @@ class ChecklistController extends Controller
         }
         return response()->json(['ok' => true]);
     }
+
+    // =========================================================================
+    // AI ANALYSIS
+    // =========================================================================
 
     public function analyzeSubmission(Request $request, ChecklistSubmission $submission)
     {
@@ -714,24 +958,33 @@ class ChecklistController extends Controller
             return response()->json(['error' => 'Task not found.'], 404);
         }
 
-        $prompt  = "You are a quality control reviewer for a business daily checklist submission.\n\n";
+        $prompt  = "You are a strict quality inspector reviewing a task submission.\n\n";
         $prompt .= "Task: {$task->title}\n";
-        if ($task->description) $prompt .= "Description: {$task->description}\n";
-        if ($submission->notes) $prompt .= "Staff Notes: {$submission->notes}\n";
-        if ($imgFiles->isEmpty()) $prompt .= "\n(No images were submitted.)\n";
+        if ($task->description) {
+            $prompt .= "Description: {$task->description}\n";
+        }
+        if ($submission->notes) {
+            $prompt .= "Staff Notes: {$submission->notes}\n";
+        }
 
-        $criteria = $task->approval_prompt
-            ?: 'Evaluate whether the submission properly completes the task based on the title, description, and submitted content (notes and/or images). Assess overall quality and completeness.';
+        if ($task->approval_prompt) {
+            $prompt .= "\nApproval Criteria: {$task->approval_prompt}";
+        }
 
-        $prompt .= "\nApproval Criteria: {$criteria}\n";
-        $prompt .= "\nIMPORTANT: Your response MUST start with exactly \"APPROVED\" or \"NOT APPROVED\" on the first line, followed by a blank line, then your explanation in 2-3 sentences.";
+        $prompt .= "\n\nBased on the submission (images + notes), respond with EXACTLY one of:\n";
+        $prompt .= "APPROVED - if the task meets all criteria\n";
+        $prompt .= "REJECTED - if the task does NOT meet criteria\n\n";
+        $prompt .= "Then provide a brief 1-2 sentence explanation.";
 
         $content = [['type' => 'text', 'text' => $prompt]];
 
         foreach ($imgFiles->take(5) as $f) {
             $content[] = [
                 'type'      => 'image_url',
-                'image_url' => ['url' => url(Storage::url($f->file_path)), 'detail' => 'auto'],
+                'image_url' => [
+                    'url'    => url(Storage::url($f->file_path)),
+                    'detail' => 'auto',
+                ],
             ];
         }
 
@@ -740,36 +993,34 @@ class ChecklistController extends Controller
             'Content-Type'  => 'application/json',
         ])->timeout(30)->post('https://api.openai.com/v1/chat/completions', [
             'model'      => 'gpt-4o',
-            'max_tokens' => 512,
-            'messages'   => [['role' => 'user', 'content' => $content]],
+            'max_tokens' => 256,
+            'messages'   => [
+                ['role' => 'user', 'content' => $content],
+            ],
         ]);
 
         if ($response->successful()) {
-            $text      = $response->json('choices.0.message.content');
-            $firstLine = strtoupper(trim(explode("\n", trim($text))[0]));
-            $verdict   = str_starts_with($firstLine, 'NOT APPROVED') ? 'not_approved'
-                       : (str_starts_with($firstLine, 'APPROVED')    ? 'approved' : 'unknown');
+            $resultText = $response->json('choices.0.message.content');
+            $approved   = str_starts_with(strtoupper(trim($resultText)), 'APPROVED');
 
             ChecklistAnalysisLog::create([
                 'submission_id'   => $submission->id,
                 'user_id'         => Auth::id(),
                 'log_type'        => 'approval',
                 'prompt_used'     => $prompt,
-                'analysis_result' => $text,
-                'verdict'         => $verdict,
+                'analysis_result' => $resultText,
             ]);
 
             return response()->json([
-                'verdict'     => $verdict,
-                'analysis'    => $text,
-                'prompt_used' => $prompt,
-                'checked_by'  => Auth::user()?->name,
-                'checked_at'  => now()->format('M j, g:i A'),
+                'result'     => $resultText,
+                'approved'   => $approved,
+                'checked_by' => Auth::user()?->name,
+                'checked_at' => now()->format('M j, h:i A'),
             ]);
         }
 
         return response()->json([
-            'error' => 'Approval check failed (' . $response->status() . '). Check your API key.',
+            'error' => 'Approval check failed (' . $response->status() . ').',
         ], 500);
     }
 
@@ -777,8 +1028,7 @@ class ChecklistController extends Controller
     {
         $logs = $submission->approvalLogs()->with('user')->get()->map(fn($log) => [
             'id'          => $log->id,
-            'verdict'     => $log->verdict,
-            'analysis'    => $log->analysis_result,
+            'result'      => $log->analysis_result,
             'prompt_used' => $log->prompt_used,
             'user'        => $log->user?->name ?? 'Unknown',
             'created_at'  => $log->created_at->format('M j, Y g:i A'),
@@ -786,14 +1036,18 @@ class ChecklistController extends Controller
 
         return response()->json(['logs' => $logs]);
     }
-    /**
-     * AJAX: Upload a single photo instantly (auto-send).
-     */
+
+    // =========================================================================
+    // UPLOAD PHOTO (AJAX - conversation-style)
+    // =========================================================================
+
     public function uploadPhoto(Request $request, ChecklistTask $task)
     {
         $today = now()->toDateString();
+        $user = Auth::user();
+
         $assignedIds = $task->assignedUsers()->pluck('users.id')->toArray();
-        if (!Auth::user()->isAdmin() && !empty($assignedIds) && !in_array(Auth::id(), $assignedIds)) {
+        if (!$user->isAdmin() && !empty($assignedIds) && !in_array($user->id, $assignedIds)) {
             return response()->json(['error' => 'Not assigned.'], 403);
         }
 
@@ -801,15 +1055,26 @@ class ChecklistController extends Controller
             'photo' => 'required|file|mimes:jpg,jpeg,png,gif,webp,mp4,mov,avi,mkv,webm,3gp',
         ]);
 
-        // Find or create today's submission
+        // Determine lookup key based on submission mode
+        $lookupKey = ['checklist_task_id' => $task->id, 'date' => $today];
+        if ($task->submission_mode === 'individual') {
+            $lookupKey['user_id'] = $user->id;
+        }
+
         $submission = ChecklistSubmission::firstOrCreate(
-            ['checklist_task_id' => $task->id, 'date' => $today],
-            ['user_id' => Auth::id(), 'status' => 'completed']
+            $lookupKey,
+            ['user_id' => $user->id, 'status' => 'completed']
         );
 
-        // If reverted, mark as completed again (resubmit)
+        // If reverted, mark as completed again
         if ($submission->status === 'pending') {
             $submission->status = 'completed';
+            $submission->save();
+        }
+
+        // Set started_at if not already set
+        if (!$submission->started_at) {
+            $submission->started_at = now();
             $submission->save();
         }
 
@@ -825,7 +1090,7 @@ class ChecklistController extends Controller
 
         ChecklistSubmissionLog::create([
             'checklist_submission_id' => $submission->id,
-            'user_id'                 => Auth::id(),
+            'user_id'                 => $user->id,
             'action'                  => 'photo_uploaded',
             'notes_snapshot'          => null,
             'file_count'              => 1,
@@ -837,19 +1102,22 @@ class ChecklistController extends Controller
             'file_id'    => $fileRecord->id,
             'url'        => Storage::url($fileRecord->file_path),
             'name'       => $fileRecord->file_original_name,
-            'uploaded_by' => Auth::user()->name,
+            'uploaded_by' => $user->name,
             'uploaded_at' => now()->format('g:i A'),
         ]);
     }
 
-    /**
-     * AJAX: Send a text note/remark for a task.
-     */
+    // =========================================================================
+    // SEND NOTE (AJAX - conversation-style)
+    // =========================================================================
+
     public function sendNote(Request $request, ChecklistTask $task)
     {
         $today = now()->toDateString();
+        $user = Auth::user();
+
         $assignedIds = $task->assignedUsers()->pluck('users.id')->toArray();
-        if (!Auth::user()->isAdmin() && !empty($assignedIds) && !in_array(Auth::id(), $assignedIds)) {
+        if (!$user->isAdmin() && !empty($assignedIds) && !in_array($user->id, $assignedIds)) {
             return response()->json(['error' => 'Not assigned.'], 403);
         }
 
@@ -857,23 +1125,35 @@ class ChecklistController extends Controller
             'notes' => 'required|string|max:2000',
         ]);
 
+        // Determine lookup key based on submission mode
+        $lookupKey = ['checklist_task_id' => $task->id, 'date' => $today];
+        if ($task->submission_mode === 'individual') {
+            $lookupKey['user_id'] = $user->id;
+        }
+
         $submission = ChecklistSubmission::firstOrCreate(
-            ['checklist_task_id' => $task->id, 'date' => $today],
-            ['user_id' => Auth::id(), 'status' => 'completed']
+            $lookupKey,
+            ['user_id' => $user->id, 'status' => 'completed']
         );
 
-        // If reverted, mark as completed again (resubmit)
+        // If reverted, mark as completed again
         if ($submission->status === 'pending') {
             $submission->status = 'completed';
             $submission->save();
         }
 
-        // Append note (or replace)
+        // Set started_at if not already set
+        if (!$submission->started_at) {
+            $submission->started_at = now();
+            $submission->save();
+        }
+
+        // Append note (keep in submission.notes for backward compat, but logs are the real source)
         $submission->update(['notes' => $request->notes]);
 
         ChecklistSubmissionLog::create([
             'checklist_submission_id' => $submission->id,
-            'user_id'                 => Auth::id(),
+            'user_id'                 => $user->id,
             'action'                  => 'note_sent',
             'notes_snapshot'          => \Str::limit($request->notes, 200),
             'file_count'              => 0,
@@ -883,7 +1163,7 @@ class ChecklistController extends Controller
         return response()->json([
             'success'  => true,
             'notes'    => $request->notes,
-            'sent_by'  => Auth::user()->name,
+            'sent_by'  => $user->name,
             'sent_at'  => now()->format('g:i A'),
         ]);
     }

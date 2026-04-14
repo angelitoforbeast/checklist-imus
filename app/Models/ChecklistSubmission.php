@@ -11,11 +11,13 @@ class ChecklistSubmission extends Model
 {
     protected $fillable = [
         'checklist_task_id', 'user_id', 'date',
-        'notes', 'file_path', 'file_original_name', 'file_mime', 'status',
+        'notes', 'file_path', 'file_original_name', 'file_mime',
+        'status', 'started_at',
     ];
 
     protected $casts = [
-        'date' => 'date',
+        'date'       => 'date',
+        'started_at' => 'datetime',
     ];
 
     public function task(): BelongsTo
