@@ -208,7 +208,7 @@
                     <div class="px-5 pb-4 space-y-2 border-t border-green-200 pt-3">
                       @if($isAnnouncement)
                         <div class="bg-white/60 rounded-xl px-3 py-2">
-                          <p class="text-xs text-gray-500">Acknowledged {{ $sub->created_at->format('g:i A') }}</p>
+                          <p class="text-xs text-gray-500">Acknowledged {{ $sub->created_at ? $sub->created_at->format('g:i A') : '' }}</p>
                         </div>
                         @if($task->description)
                           <div class="bg-white/60 rounded-xl px-3 py-2">
@@ -244,7 +244,7 @@
                           <div class="w-5 h-5 rounded-full bg-green-200 flex items-center justify-center text-xs font-bold text-green-700 flex-shrink-0">
                             {{ strtoupper(substr($sub->user->name ?? '?', 0, 1)) }}
                           </div>
-                          <span>{{ $sub->user->name ?? 'Unknown' }} · {{ $sub->created_at->format('g:i A') }}</span>
+                          <span>{{ $sub->user->name ?? 'Unknown' }} · {{ $sub->created_at ? $sub->created_at->format('g:i A') : '' }}</span>
                         </div>
                         @if($isMine || $isAdmin)
                           <button @click.stop="focusTask = {{ $task->id }}; document.body.style.overflow = 'hidden';"
@@ -421,14 +421,14 @@
                sentPhotos: [
                  @if($sub)
                    @foreach($subFiles as $f)
-                     { url: '{{ Storage::url($f->file_path) }}', name: '{{ $f->file_original_name }}', time: '{{ $f->created_at->format('g:i A') }}', ts: {{ $f->created_at->timestamp }}, by: '{{ $sub->user->name ?? 'Unknown' }}', isVideo: {{ $f->isVideo() ? 'true' : 'false' }} },
+                     { url: '{{ Storage::url($f->file_path) }}', name: '{{ $f->file_original_name }}', time: '{{ $f->created_at ? $f->created_at->format('g:i A') : '' }}', ts: {{ $f->created_at ? $f->created_at->timestamp : 0 }}, by: '{{ $sub->user->name ?? 'Unknown' }}', isVideo: {{ $f->isVideo() ? 'true' : 'false' }} },
                    @endforeach
                  @endif
                ],
                sentNotes: [
                  @if($sub)
                    @foreach($sub->logs->where('action', 'note_sent')->sortBy('created_at') as $noteLog)
-                     @if($noteLog->notes_snapshot)
+                     @if($noteLog->notes_snapshot && $noteLog->created_at)
                        { text: {{ json_encode($noteLog->notes_snapshot) }}, time: '{{ $noteLog->created_at->format('g:i A') }}', ts: {{ $noteLog->created_at->timestamp }}, by: '{{ $noteLog->user->name ?? $sub->user->name ?? 'Unknown' }}' },
                      @endif
                    @endforeach
@@ -437,20 +437,26 @@
                adminComments: [
                  @php $taskComments = $commentsByTask->get($task->id, collect()); @endphp
                  @foreach($taskComments as $comment)
-                   { text: {{ json_encode($comment->message) }}, time: '{{ $comment->created_at->format('g:i A') }}', ts: {{ $comment->created_at->timestamp }}, by: '{{ $comment->user->name ?? 'Admin' }}', initial: '{{ strtoupper(substr($comment->user->name ?? 'A', 0, 1)) }}' },
+                   @if($comment->created_at)
+                     { text: {{ json_encode($comment->message) }}, time: '{{ $comment->created_at->format('g:i A') }}', ts: {{ $comment->created_at->timestamp }}, by: '{{ $comment->user->name ?? 'Admin' }}', initial: '{{ strtoupper(substr($comment->user->name ?? 'A', 0, 1)) }}' },
+                   @endif
                  @endforeach
                ],
                revertEvents: [
                  @if($sub)
                    @foreach($sub->logs->where('action', 'reverted')->sortBy('created_at') as $revLog)
-                     { text: '{{ ($revLog->user->name ?? 'Admin') }} reverted this task to pending', time: '{{ $revLog->created_at->format('g:i A') }}', ts: {{ $revLog->created_at->timestamp }}, by: '{{ $revLog->user->name ?? 'Admin' }}' },
+                     @if($revLog->created_at)
+                       { text: '{{ ($revLog->user->name ?? 'Admin') }} reverted this task to pending', time: '{{ $revLog->created_at->format('g:i A') }}', ts: {{ $revLog->created_at->timestamp }}, by: '{{ $revLog->user->name ?? 'Admin' }}' },
+                     @endif
                    @endforeach
                  @endif
                ],
                submitEvents: [
                  @if($sub)
                    @foreach($sub->logs->whereIn('action', ['submitted','updated'])->sortBy('created_at') as $sLog)
-                     { text: '{{ ($sLog->user->name ?? 'Someone') }} {{ $sLog->action === 'submitted' ? 'marked as done' : 're-submitted' }}', time: '{{ $sLog->created_at->format('g:i A') }}', ts: {{ $sLog->created_at->timestamp }} },
+                     @if($sLog->created_at)
+                       { text: '{{ ($sLog->user->name ?? 'Someone') }} {{ $sLog->action === 'submitted' ? 'marked as done' : 're-submitted' }}', time: '{{ $sLog->created_at->format('g:i A') }}', ts: {{ $sLog->created_at->timestamp }} },
+                     @endif
                    @endforeach
                  @endif
                ],
@@ -635,9 +641,9 @@
                      $showDoneInitially = ($subFiles->count() > 0 || $sub->logs->where('action', 'note_sent')->count() > 0);
                    } elseif ($lastRevertOrSubmit->action === 'reverted') {
                      // Was reverted - check if new content sent AFTER the revert
-                     $revertTime = $lastRevertOrSubmit->created_at;
-                     $newPhotos = $subFiles->filter(fn($f) => $f->created_at->gt($revertTime))->count();
-                     $newNotes = $sub->logs->where('action', 'note_sent')->filter(fn($l) => $l->created_at->gt($revertTime))->count();
+                     $revertTime = $lastRevertOrSubmit->created_at ?? now();
+                     $newPhotos = $subFiles->filter(fn($f) => $f->created_at && $f->created_at->gt($revertTime))->count();
+                     $newNotes = $sub->logs->where('action', 'note_sent')->filter(fn($l) => $l->created_at && $l->created_at->gt($revertTime))->count();
                      $showDoneInitially = ($newPhotos > 0 || $newNotes > 0);
                    }
                    // If last action was submitted/updated, don't show (already submitted)
