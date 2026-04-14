@@ -131,7 +131,29 @@ class ChecklistController extends Controller
         $tasks = $this->filterBySchedule($tasks, $today);
         $tasks = $this->filterCompletedOnceTasks($tasks, $today);
 
-        // Load all submissions for today
+        // Load all submissions for today (including for deleted tasks)
+        $allTodaySubmissions = ChecklistSubmission::with(['user', 'files', 'logs.user'])
+            ->where('date', $today)
+            ->get();
+        $allTodayByTask = $allTodaySubmissions->groupBy('checklist_task_id');
+
+        // Include soft-deleted tasks that this user has submissions for today
+        $currentTaskIds = $tasks->pluck('id')->toArray();
+        $userSubmittedTaskIds = $allTodaySubmissions
+            ->filter(fn($s) => $s->user_id === $user->id)
+            ->pluck('checklist_task_id')
+            ->unique()
+            ->diff($currentTaskIds);
+
+        if ($userSubmittedTaskIds->isNotEmpty()) {
+            $extraTasks = ChecklistTask::withTrashed()
+                ->with(['assignedUsers', 'referenceFiles'])
+                ->whereIn('id', $userSubmittedTaskIds)
+                ->get();
+            $tasks = $tasks->merge($extraTasks)->sortBy([['sort_order', 'asc'], ['id', 'asc']])->values();
+        }
+
+        // Load submissions for all tasks (including the extra ones)
         [$submissionsByTask, $allSubmissionsByTask] = $this->loadSubmissions($tasks->pluck('id'), $today, $user);
 
         // For individual mode / announcement tasks, the current user's submission
@@ -195,6 +217,20 @@ class ChecklistController extends Controller
         $tasks = $this->filterBySchedule($tasks, $today);
         $tasks = $this->filterCompletedOnceTasks($tasks, $today);
 
+        // Include soft-deleted tasks that this user has submissions for today
+        $allTodaySubs = ChecklistSubmission::where('date', $today)
+            ->where('user_id', $user->id)
+            ->pluck('checklist_task_id')
+            ->unique();
+        $missingIds = $allTodaySubs->diff($tasks->pluck('id'));
+        if ($missingIds->isNotEmpty()) {
+            $extra = ChecklistTask::withTrashed()
+                ->with('assignedUsers')
+                ->whereIn('id', $missingIds)
+                ->get();
+            $tasks = $tasks->merge($extra)->sortBy([['sort_order', 'asc'], ['id', 'asc']])->values();
+        }
+
         [$submissionsByTask, $allSubmissionsByTask] = $this->loadSubmissions($tasks->pluck('id'), $today, $user);
 
         $comments = \App\Models\ChecklistTaskComment::where('date', $today)
@@ -240,8 +276,9 @@ class ChecklistController extends Controller
     // POLL CONVERSATION (real-time updates inside focus mode)
     // =========================================================================
 
-    public function pollConversation(Request $request, ChecklistTask $task)
+    public function pollConversation(Request $request, $taskId)
     {
+        $task = ChecklistTask::withTrashed()->findOrFail($taskId);
         $today = now()->toDateString();
         $user = Auth::user();
 
@@ -558,8 +595,9 @@ class ChecklistController extends Controller
     /**
      * AJAX: User starts a task — creates submission with started_at timestamp.
      */
-    public function startTask(Request $request, ChecklistTask $task)
+    public function startTask(Request $request, $taskId)
     {
+        $task = ChecklistTask::withTrashed()->findOrFail($taskId);
         $today = now()->toDateString();
         $user = Auth::user();
 
@@ -607,8 +645,9 @@ class ChecklistController extends Controller
     // SUBMIT (updated for individual mode)
     // =========================================================================
 
-    public function submit(Request $request, ChecklistTask $task)
+    public function submit(Request $request, $taskId)
     {
+        $task = ChecklistTask::withTrashed()->findOrFail($taskId);
         $today = now()->toDateString();
         $user = Auth::user();
 
@@ -1193,8 +1232,9 @@ class ChecklistController extends Controller
     // UPLOAD PHOTO (AJAX - conversation-style)
     // =========================================================================
 
-    public function uploadPhoto(Request $request, ChecklistTask $task)
+    public function uploadPhoto(Request $request, $taskId)
     {
+        $task = ChecklistTask::withTrashed()->findOrFail($taskId);
         $today = now()->toDateString();
         $user = Auth::user();
 
@@ -1263,8 +1303,9 @@ class ChecklistController extends Controller
     // SEND NOTE (AJAX - conversation-style)
     // =========================================================================
 
-    public function sendNote(Request $request, ChecklistTask $task)
+    public function sendNote(Request $request, $taskId)
     {
+        $task = ChecklistTask::withTrashed()->findOrFail($taskId);
         $today = now()->toDateString();
         $user = Auth::user();
 
