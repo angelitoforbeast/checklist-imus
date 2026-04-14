@@ -12,7 +12,7 @@ class ChecklistTask extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'title', 'description', 'type', 'is_active', 'sort_order',
+        'title', 'description', 'instructions', 'type', 'is_active', 'sort_order',
         'ai_prompt', 'approval_prompt', 'task_time', 'reference_image',
         'frequency', 'submission_mode',
         'schedule_days', 'schedule_dates', 'start_date', 'end_date',

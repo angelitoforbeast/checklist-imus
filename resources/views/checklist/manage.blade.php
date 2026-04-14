@@ -96,8 +96,16 @@
         {{-- Description --}}
         <div>
           <label class="text-xs font-medium text-gray-600 mb-1 block">Description <span class="text-gray-400 font-normal">(optional)</span></label>
-          <input type="text" name="description" placeholder="Brief description..." value="{{ old('description') }}"
-                 class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+          <textarea name="description" placeholder="Brief description..." rows="2"
+                    class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent resize-y">{{ old('description') }}</textarea>
+        </div>
+
+        {{-- Instructions --}}
+        <div>
+          <label class="text-xs font-medium text-gray-600 mb-1 block">Instructions <span class="text-gray-400 font-normal">(optional - visible to users)</span></label>
+          <textarea name="instructions" placeholder="Step-by-step instructions for users..." rows="3"
+                    class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent resize-y">{{ old('instructions') }}</textarea>
+          <p class="text-[10px] text-gray-400 mt-0.5">Users will see these instructions when they open the task</p>
         </div>
 
         {{-- Type + Submission Mode row --}}
@@ -434,6 +442,12 @@
                   <span class="text-xs text-gray-700">{{ $t->description }}</span>
                 </div>
               @endif
+              @if($t->instructions)
+                <div class="flex items-start gap-2">
+                  <span class="text-xs text-gray-400 w-24 flex-shrink-0">Instructions</span>
+                  <span class="text-xs text-gray-700 whitespace-pre-line">{{ $t->instructions }}</span>
+                </div>
+              @endif
               <div class="flex items-start gap-2">
                 <span class="text-xs text-gray-400 w-24 flex-shrink-0">Assigned</span>
                 <span class="text-xs text-indigo-600">{{ $t->assignedUsers->count() ? $t->assignedUsers->pluck('name')->implode(', ') : 'Anyone' }}</span>
@@ -515,6 +529,7 @@
                   @csrf @method('PATCH')
                   <input type="hidden" name="title" value="{{ $t->title }}">
                   <input type="hidden" name="description" value="{{ $t->description }}">
+                  <input type="hidden" name="instructions" value="{{ $t->instructions }}">
                   <input type="hidden" name="type" value="{{ $t->type }}">
                   <input type="hidden" name="ai_prompt" value="{{ $t->ai_prompt }}">
                   <input type="hidden" name="approval_prompt" value="{{ $t->approval_prompt }}">
@@ -556,8 +571,14 @@
 
               <div>
                 <label class="text-xs font-medium text-gray-600 mb-1 block">Description</label>
-                <input type="text" name="description" value="{{ $t->description }}" placeholder="Description..."
-                       class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+                <textarea name="description" placeholder="Description..." rows="2"
+                          class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent resize-y">{{ $t->description }}</textarea>
+              </div>
+
+              <div>
+                <label class="text-xs font-medium text-gray-600 mb-1 block">Instructions <span class="text-gray-400 font-normal">(visible to users)</span></label>
+                <textarea name="instructions" placeholder="Step-by-step instructions..." rows="3"
+                          class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent resize-y">{{ $t->instructions }}</textarea>
               </div>
 
               <div class="grid grid-cols-2 gap-3">

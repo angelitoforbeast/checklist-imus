@@ -352,6 +352,12 @@
                     @else
                       <p class="text-sm text-gray-400 italic">No additional details.</p>
                     @endif
+                    @if($task->instructions)
+                      <div class="mt-3 pt-3 border-t border-gray-100">
+                        <p class="text-xs font-semibold text-gray-500 mb-1">📋 Instructions</p>
+                        <p class="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{{ $task->instructions }}</p>
+                      </div>
+                    @endif
                   </div>
                   <p class="text-[10px] text-gray-400 mt-1 ml-1">Announcement</p>
                 </div>
@@ -639,6 +645,12 @@
                     <p class="text-sm text-gray-800 font-medium">{{ $task->title }}</p>
                     @if($task->description)
                       <p class="text-xs text-gray-500 mt-1">{{ $task->description }}</p>
+                    @endif
+                    @if($task->instructions)
+                      <div class="mt-2 pt-2 border-t border-gray-300/50">
+                        <p class="text-xs font-semibold text-gray-600 mb-0.5">📋 Instructions</p>
+                        <p class="text-xs text-gray-500 whitespace-pre-line">{{ $task->instructions }}</p>
+                      </div>
                     @endif
                     @if(in_array($task->type, ['photo', 'photo_note', 'both']))
                       <p class="text-xs text-gray-500 mt-1">📸 Please send photo proof</p>
@@ -973,11 +985,13 @@
 
       const knownStatuses = {};
       const knownStarted = {};
+      const knownTaskIds = new Set();
       document.querySelectorAll('[data-poll-task]').forEach(card => {
           const tid = card.dataset.pollTask;
           const badge = card.querySelector('[data-poll-status]');
           knownStatuses[tid] = badge ? badge.dataset.pollStatus : 'pending';
           knownStarted[tid] = badge ? (badge.dataset.pollStatus === 'in_progress') : false;
+          knownTaskIds.add(String(tid));
       });
 
       function updateBadge(badge, status, started) {
@@ -1024,6 +1038,22 @@
               const completedCountEl = document.querySelector('[data-poll-completed-count]');
 
               let needsMove = false;
+
+              // Detect new or removed tasks → auto-reload
+              const serverTaskIds = new Set(data.tasks.map(t => String(t.task_id)));
+              let hasNewTasks = false;
+              for (const sid of serverTaskIds) {
+                  if (!knownTaskIds.has(sid)) { hasNewTasks = true; break; }
+              }
+              if (!hasNewTasks) {
+                  for (const kid of knownTaskIds) {
+                      if (!serverTaskIds.has(kid)) { hasNewTasks = true; break; }
+                  }
+              }
+              if (hasNewTasks) {
+                  window.location.reload();
+                  return;
+              }
 
               data.tasks.forEach(t => {
                   const card = document.querySelector('[data-poll-task="' + t.task_id + '"');

@@ -711,7 +711,8 @@ class ChecklistController extends Controller
     {
         $validated = $request->validate([
             'title'             => 'required|string|max:255',
-            'description'       => 'nullable|string|max:1000',
+            'description'       => 'nullable|string|max:5000',
+            'instructions'      => 'nullable|string|max:5000',
             'type'              => 'required|in:photo,note,any,both,photo_note,announcement',
             'ai_prompt'         => 'nullable|string|max:2000',
             'approval_prompt'   => 'nullable|string|max:2000',
@@ -775,7 +776,8 @@ class ChecklistController extends Controller
     {
         $validated = $request->validate([
             'title'             => 'required|string|max:255',
-            'description'       => 'nullable|string|max:1000',
+            'description'       => 'nullable|string|max:5000',
+            'instructions'      => 'nullable|string|max:5000',
             'type'              => 'required|in:photo,note,any,both,photo_note,announcement',
             'is_active'         => 'boolean',
             'ai_prompt'         => 'nullable|string|max:2000',
