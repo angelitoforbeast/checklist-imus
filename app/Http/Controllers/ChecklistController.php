@@ -844,6 +844,7 @@ class ChecklistController extends Controller
             'description'       => 'nullable|string|max:5000',
             'instructions'      => 'nullable|string|max:5000',
             'type'              => 'required|in:photo,note,any,both,photo_note,announcement',
+            'required_photos'   => 'nullable|integer|min:1|max:50',
             'ai_prompt'         => 'nullable|string|max:2000',
             'approval_prompt'   => 'nullable|string|max:2000',
             'task_time'         => 'nullable|date_format:H:i',
@@ -863,6 +864,13 @@ class ChecklistController extends Controller
         // Announcements are always individual
         if (($validated['type'] ?? '') === 'announcement') {
             $validated['submission_mode'] = 'individual';
+        }
+
+        // Default required_photos to 1 for photo-related types
+        if (in_array($validated['type'] ?? '', ['photo', 'photo_note', 'both'])) {
+            $validated['required_photos'] = max(1, (int)($validated['required_photos'] ?? 1));
+        } else {
+            $validated['required_photos'] = 1;
         }
 
         $imagePath = null;
@@ -909,6 +917,7 @@ class ChecklistController extends Controller
             'description'       => 'nullable|string|max:5000',
             'instructions'      => 'nullable|string|max:5000',
             'type'              => 'required|in:photo,note,any,both,photo_note,announcement',
+            'required_photos'   => 'nullable|integer|min:1|max:50',
             'is_active'         => 'boolean',
             'ai_prompt'         => 'nullable|string|max:2000',
             'approval_prompt'   => 'nullable|string|max:2000',
@@ -928,6 +937,13 @@ class ChecklistController extends Controller
 
         if (($validated['type'] ?? '') === 'announcement') {
             $validated['submission_mode'] = 'individual';
+        }
+
+        // Default required_photos to 1 for photo-related types
+        if (in_array($validated['type'] ?? '', ['photo', 'photo_note', 'both'])) {
+            $validated['required_photos'] = max(1, (int)($validated['required_photos'] ?? 1));
+        } else {
+            $validated['required_photos'] = 1;
         }
 
         if ($request->hasFile('reference_image')) {

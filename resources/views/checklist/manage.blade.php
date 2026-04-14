@@ -141,6 +141,7 @@
     <div x-data="{
            showForm: {{ $errors->any() ? 'true' : 'false' }},
            taskType: '{{ old('type', 'photo_note') }}',
+           requiredPhotos: {{ old('required_photos', 1) }},
            freq: '{{ old('frequency', 'daily') }}',
            subMode: '{{ old('submission_mode', 'group') }}',
            assignOpen: false,
@@ -230,6 +231,13 @@
             </select>
             <p class="text-[10px] text-gray-400 mt-0.5" x-show="taskType === 'announcement'">Announcements are always individual</p>
           </div>
+        </div>
+
+        {{-- Required Photos (only for photo-related types) --}}
+        <div x-show="['photo','photo_note','both'].includes(taskType)" x-transition class="">
+          <label class="text-xs font-medium text-gray-600 mb-1 block">Required Photos <span class="text-gray-400">(minimum before Done button appears)</span></label>
+          <input type="number" name="required_photos" x-model="requiredPhotos" min="1" max="50" value="1"
+                 class="w-32 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
         </div>
 
         {{-- Announcement info box --}}
@@ -443,6 +451,7 @@
                expanded: false,
                editFreq: '{{ $t->frequency ?? 'daily' }}',
                editType: '{{ $t->type }}',
+               editRequiredPhotos: {{ $t->required_photos ?? 1 }},
                editSubMode: '{{ $t->submission_mode ?? 'group' }}',
                editDates: {{ json_encode($t->schedule_dates ?? []) }},
                editAssignOpen: false,
@@ -701,6 +710,13 @@
                     <option value="individual">👤 Individual</option>
                   </select>
                 </div>
+              </div>
+
+              {{-- Required Photos (edit, only for photo-related types) --}}
+              <div x-show="['photo','photo_note','both'].includes(editType)" x-transition>
+                <label class="text-xs font-medium text-gray-600 mb-1 block">Required Photos <span class="text-gray-400">(minimum before Done button appears)</span></label>
+                <input type="number" name="required_photos" x-model="editRequiredPhotos" min="1" max="50"
+                       class="w-32 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
               </div>
 
               {{-- Announcement info box (edit) --}}

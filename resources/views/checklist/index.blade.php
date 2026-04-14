@@ -629,6 +629,7 @@
                submitting: false,
                taskCompleted: false,
                taskType: '{{ $task->type }}',
+               requiredPhotos: {{ $task->required_photos ?? 1 }},
                // Track whether user has sent NEW content in this session
                // true = user has new content ready to submit (show Done button)
                // false = no new content yet (hide Done button)
@@ -653,15 +654,16 @@
                get requirementsMet() {
                  if (!this.taskStarted) return false;
                  if (!this.newContentSent) return false;
-                 const hasPhotos = this.sentPhotos.length > 0;
+                 const photoCount = this.sentPhotos.length;
+                 const hasEnoughPhotos = photoCount >= this.requiredPhotos;
                  const hasNotes = this.sentNotes.length > 0;
                  switch (this.taskType) {
-                   case 'photo': return hasPhotos;
+                   case 'photo': return hasEnoughPhotos;
                    case 'note': return hasNotes;
-                   case 'photo_note': return hasPhotos; // photo required, note optional
-                   case 'both': return hasPhotos && hasNotes;
-                   case 'any': return hasPhotos || hasNotes;
-                   default: return hasPhotos || hasNotes;
+                   case 'photo_note': return hasEnoughPhotos; // photos required, note optional
+                   case 'both': return hasEnoughPhotos && hasNotes;
+                   case 'any': return photoCount > 0 || hasNotes;
+                   default: return photoCount > 0 || hasNotes;
                  }
                },
                async submitTask() {
@@ -937,6 +939,18 @@
 
             </div>
           </div>
+
+          {{-- ===== PHOTO PROGRESS (shown when photos needed but not enough) ===== --}}
+          <template x-if="taskStarted && !taskCompleted && !requirementsMet && ['photo','photo_note','both'].includes(taskType) && requiredPhotos > 1">
+            <div class="flex-shrink-0 bg-blue-50 border-t border-blue-200 px-4 py-2">
+              <div class="max-w-lg mx-auto flex items-center gap-2">
+                <div class="flex-1 bg-blue-200 rounded-full h-2 overflow-hidden">
+                  <div class="bg-blue-500 h-full rounded-full transition-all duration-300" :style="'width:' + Math.min(100, (sentPhotos.length / requiredPhotos) * 100) + '%'"></div>
+                </div>
+                <span class="text-xs font-medium text-blue-600 whitespace-nowrap" x-text="'📸 ' + sentPhotos.length + '/' + requiredPhotos + ' photos'"></span>
+              </div>
+            </div>
+          </template>
 
           {{-- ===== DONE BUTTON (shown when requirements met) ===== --}}
           <template x-if="requirementsMet && !taskCompleted">
