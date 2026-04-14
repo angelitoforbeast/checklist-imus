@@ -133,25 +133,13 @@
 
             @if($isAssigned)
               <div class="px-5 pb-4">
-                @if($isAnnouncement)
-                  {{-- Announcement: Show description and Acknowledge button --}}
-                  <form method="POST" action="{{ route('checklist.submit', $task) }}">
-                    @csrf
-                    <button type="submit"
-                            class="w-full py-3.5 rounded-2xl font-bold text-base transition-all duration-200
-                              text-white active:scale-[0.98] shadow-lg bg-amber-500"
-                            style="box-shadow: 0 10px 15px -3px rgba(245,158,11,0.3)">
-                      ✅ Acknowledge
-                    </button>
-                  </form>
-                @else
-                  {{-- Regular task: View button opens conversation --}}
-                  <button @click="setFocus({{ $task->id }})"
-                          class="w-full py-3.5 rounded-2xl font-bold text-base transition-all duration-200
-                            text-white active:scale-[0.98] shadow-lg" style="background-color:#1877F2; box-shadow: 0 10px 15px -3px rgba(24,119,242,0.3)">
-                    👁 View
-                  </button>
-                @endif
+                {{-- All tasks: View button opens conversation/focus mode --}}
+                <button @click="setFocus({{ $task->id }})"
+                        class="w-full py-3.5 rounded-2xl font-bold text-base transition-all duration-200
+                          text-white active:scale-[0.98] shadow-lg"
+                        style="background-color:{{ $isAnnouncement ? '#f59e0b' : '#1877F2' }}; box-shadow: 0 10px 15px -3px {{ $isAnnouncement ? 'rgba(245,158,11,0.3)' : 'rgba(24,119,242,0.3)' }}">
+                  👁 View
+                </button>
               </div>
             @endif
           </div>
@@ -273,8 +261,6 @@
     {{-- ===== FULL-SCREEN CONVERSATION MODE (per task) ===== --}}
     @foreach($tasks as $task)
       @php
-        if ($task->type === 'announcement') continue; // Announcements don't have conversation mode
-
         $sub         = $userSubmissionsByTask->get($task->id);
         $done        = $sub !== null && $sub->status === 'completed';
         $reverted    = $sub !== null && $sub->status === 'pending' && $sub->started_at;
@@ -283,12 +269,123 @@
         $assignedIds = $task->assignedUsers->pluck('id')->toArray();
         $isAssigned  = empty($assignedIds) || in_array($userId, $assignedIds);
         $canInteract = $isAssigned || $isAdmin;
+        $isAnnouncement = $task->type === 'announcement';
         $subFiles    = $sub ? $sub->files : collect();
         $imageFiles  = $subFiles->filter(fn($f) => $f->isImage());
         $videoFiles  = $subFiles->filter(fn($f) => $f->isVideo());
       @endphp
 
-      @if($canInteract)
+      @if($canInteract && $isAnnouncement)
+        {{-- ===== ANNOUNCEMENT FOCUS MODE ===== --}}
+        <div x-show="focusTask === {{ $task->id }}"
+             x-transition.opacity.duration.200ms
+             class="fixed inset-0 z-50 flex flex-col bg-white"
+             style="display:none"
+             x-data="{
+               acknowledging: false,
+               acknowledged: {{ $done ? 'true' : 'false' }},
+               async acknowledge() {
+                 if (this.acknowledging || this.acknowledged) return;
+                 this.acknowledging = true;
+                 try {
+                   const fd = new FormData();
+                   fd.append('_token', document.querySelector('meta[name=csrf-token]').content);
+                   const res = await fetch('{{ route('checklist.submit', $task) }}', {
+                     method: 'POST',
+                     body: fd,
+                     headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                   });
+                   if (res.redirected || res.ok) {
+                     this.acknowledged = true;
+                     // Reload after short delay to update card status
+                     setTimeout(() => window.location.reload(), 500);
+                   } else {
+                     alert('Failed to acknowledge. Please try again.');
+                   }
+                 } catch(e) {
+                   alert('Failed to acknowledge. Check your connection.');
+                 }
+                 this.acknowledging = false;
+               }
+             }">
+
+          {{-- Announcement Header --}}
+          <div class="flex-shrink-0 border-b border-amber-200 shadow-sm bg-amber-500">
+            <div class="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
+              <button @click="clearFocus()"
+                      class="flex items-center justify-center w-8 h-8 rounded-full bg-white/20 text-white active:bg-white/30 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+              </button>
+              <div class="flex-1 min-w-0">
+                <h1 class="text-white font-bold text-base truncate">📢 {{ $task->title }}</h1>
+                <span class="text-xs font-semibold" :class="acknowledged ? 'text-green-200' : 'text-white/70'"
+                      x-text="acknowledged ? '✅ Acknowledged' : '⏳ Pending acknowledgement'"></span>
+              </div>
+            </div>
+          </div>
+
+          {{-- Announcement Content --}}
+          <div class="flex-1 overflow-y-auto bg-gray-50">
+            <div class="max-w-lg mx-auto px-4 py-6 space-y-4">
+              {{-- Announcement bubble --}}
+              <div class="flex items-start gap-2">
+                <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-amber-100 text-xl">📢</div>
+                <div class="flex-1">
+                  <div class="bg-white rounded-2xl rounded-tl-md px-5 py-4 shadow-sm border border-gray-100">
+                    <h2 class="text-lg font-bold text-gray-800 mb-2">{{ $task->title }}</h2>
+                    @if($task->description)
+                      <p class="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{{ $task->description }}</p>
+                    @else
+                      <p class="text-sm text-gray-400 italic">No additional details.</p>
+                    @endif
+                  </div>
+                  <p class="text-[10px] text-gray-400 mt-1 ml-1">Announcement</p>
+                </div>
+              </div>
+
+              {{-- Acknowledged status --}}
+              <template x-if="acknowledged">
+                <div class="flex justify-center">
+                  <div class="bg-green-100 rounded-full px-5 py-2 text-sm text-green-700 font-semibold flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    You have acknowledged this announcement
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          {{-- Bottom: Acknowledge button --}}
+          <div class="flex-shrink-0 border-t border-gray-200 bg-white" style="padding-bottom: env(safe-area-inset-bottom, 0px);">
+            <div class="max-w-lg mx-auto px-4 py-3">
+              <template x-if="!acknowledged">
+                <button @click="acknowledge()"
+                        :disabled="acknowledging"
+                        class="w-full py-3.5 rounded-2xl font-bold text-base transition-all duration-200 text-white active:scale-[0.98] shadow-lg"
+                        :class="acknowledging ? 'bg-gray-400' : 'bg-amber-500'"
+                        :style="acknowledging ? '' : 'box-shadow: 0 10px 15px -3px rgba(245,158,11,0.3)'">
+                  <span x-show="!acknowledging">✅ Acknowledge</span>
+                  <span x-show="acknowledging" class="flex items-center justify-center gap-2">
+                    <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    Acknowledging...
+                  </span>
+                </button>
+              </template>
+              <template x-if="acknowledged">
+                <button @click="clearFocus()"
+                        class="w-full py-3.5 rounded-2xl font-bold text-base transition-all duration-200 text-white active:scale-[0.98] shadow-lg bg-green-500"
+                        style="box-shadow: 0 10px 15px -3px rgba(34,197,94,0.3)">
+                  ✅ Done - Go Back
+                </button>
+              </template>
+            </div>
+          </div>
+        </div>
+
+      @elseif($canInteract && !$isAnnouncement)
         <div x-show="focusTask === {{ $task->id }}"
              x-transition.opacity.duration.200ms
              class="fixed inset-0 z-50 flex flex-col bg-white"

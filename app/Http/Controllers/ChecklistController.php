@@ -93,7 +93,8 @@ class ChecklistController extends Controller
     {
         if (!$submissionsForTask || $submissionsForTask->isEmpty()) return false;
 
-        if ($task->submission_mode === 'individual') {
+        // Announcements are always individual - each assigned user must acknowledge
+        if ($task->submission_mode === 'individual' || $task->type === 'announcement') {
             $assignedIds = $task->assignedUsers->pluck('id')->toArray();
             if (empty($assignedIds)) {
                 // No specific assignment = treat as group
@@ -107,7 +108,7 @@ class ChecklistController extends Controller
             return true;
         }
 
-        // Group mode or announcement
+        // Group mode
         return $submissionsForTask->where('status', 'completed')->isNotEmpty();
     }
 
@@ -381,7 +382,12 @@ class ChecklistController extends Controller
             }
         }
 
-        $doneCount  = $submissionsByTask->where('status', 'completed')->count();
+        // Calculate doneCount using isTaskDone for proper individual/announcement handling
+        $doneCount = 0;
+        foreach ($tasks as $task) {
+            $taskSubs = $allSubmissionsByTask->get($task->id, collect());
+            if ($this->isTaskDone($task, $taskSubs)) $doneCount++;
+        }
         $totalTasks = $tasks->count();
 
         $prevDate = $dateObj->copy()->subDay()->toDateString();
@@ -394,7 +400,7 @@ class ChecklistController extends Controller
                 $assignedIds = $task->assignedUsers->pluck('id')->toArray();
                 return empty($assignedIds) || !empty(array_intersect($assignedIds, $roleUserIds));
             })->values();
-            $doneCount = $tasks->filter(fn($t) => $submissionsByTask->has($t->id) && $submissionsByTask->get($t->id)->status === 'completed')->count();
+            $doneCount = $tasks->filter(fn($t) => $this->isTaskDone($t, $allSubmissionsByTask->get($t->id, collect())))->count();
             $totalTasks = $tasks->count();
         }
 

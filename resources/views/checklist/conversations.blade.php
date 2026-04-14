@@ -105,8 +105,40 @@
       @else
 
         @php
-          $pendingTasks = $tasks->filter(fn($t) => !$submissionsByTask->has($t->id) || $submissionsByTask->get($t->id)->status !== 'completed');
-          $completedTasks = $tasks->filter(fn($t) => $submissionsByTask->has($t->id) && $submissionsByTask->get($t->id)->status === 'completed');
+          // For individual/announcement tasks: completed only when ALL assigned users have completed
+          $pendingTasks = $tasks->filter(function($t) use ($allSubmissionsByTask) {
+              $taskSubs = $allSubmissionsByTask->get($t->id, collect());
+              if ($t->submission_mode === 'individual' || $t->type === 'announcement') {
+                  $assignedIds = $t->assignedUsers->pluck('id')->toArray();
+                  if (empty($assignedIds)) {
+                      return $taskSubs->where('status', 'completed')->isEmpty();
+                  }
+                  foreach ($assignedIds as $uid) {
+                      $userSub = $taskSubs->firstWhere('user_id', $uid);
+                      if (!$userSub || $userSub->status !== 'completed') return true; // still pending
+                  }
+                  return false; // all done
+              }
+              // Group mode: check first submission
+              $sub = $taskSubs->first();
+              return !$sub || $sub->status !== 'completed';
+          });
+          $completedTasks = $tasks->filter(function($t) use ($allSubmissionsByTask) {
+              $taskSubs = $allSubmissionsByTask->get($t->id, collect());
+              if ($t->submission_mode === 'individual' || $t->type === 'announcement') {
+                  $assignedIds = $t->assignedUsers->pluck('id')->toArray();
+                  if (empty($assignedIds)) {
+                      return $taskSubs->where('status', 'completed')->isNotEmpty();
+                  }
+                  foreach ($assignedIds as $uid) {
+                      $userSub = $taskSubs->firstWhere('user_id', $uid);
+                      if (!$userSub || $userSub->status !== 'completed') return false;
+                  }
+                  return true; // all assigned users completed
+              }
+              $sub = $taskSubs->first();
+              return $sub && $sub->status === 'completed';
+          });
         @endphp
 
         {{-- Pending tasks --}}
