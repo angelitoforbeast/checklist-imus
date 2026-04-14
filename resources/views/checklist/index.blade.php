@@ -77,6 +77,10 @@
                 $pendingTasks->push($task);
             }
         }
+
+        // Sort announcements to top in both lists
+        $pendingTasks = $pendingTasks->sortByDesc(fn($t) => $t->type === 'announcement' ? 1 : 0)->values();
+        $doneTasks = $doneTasks->sortByDesc(fn($t) => $t->type === 'announcement' ? 1 : 0)->values();
       @endphp
 
       @if($tasks->isEmpty())
@@ -206,6 +210,16 @@
                         <div class="bg-white/60 rounded-xl px-3 py-2">
                           <p class="text-xs text-gray-500">Acknowledged {{ $sub->created_at->format('g:i A') }}</p>
                         </div>
+                        @if($task->description)
+                          <div class="bg-white/60 rounded-xl px-3 py-2">
+                            <p class="text-sm text-gray-600 leading-relaxed line-clamp-2">{{ $task->description }}</p>
+                          </div>
+                        @endif
+                        <button @click.stop="focusTask = {{ $task->id }}; document.body.style.overflow = 'hidden';"
+                                class="w-full py-2.5 rounded-2xl font-semibold text-sm transition-all duration-200
+                                  bg-white border-2 border-green-300 text-green-700 active:bg-green-50 active:scale-[0.98] mt-1">
+                          👁 View Announcement
+                        </button>
                       @else
                         @if($imageFiles->count() > 0)
                           <div class="overflow-x-auto -mx-5 px-5 pb-1" style="-webkit-overflow-scrolling: touch;">
@@ -958,11 +972,29 @@
       const POLL_URL = '{{ route("checklist.poll-status") }}';
 
       const knownStatuses = {};
+      const knownStarted = {};
       document.querySelectorAll('[data-poll-task]').forEach(card => {
           const tid = card.dataset.pollTask;
           const badge = card.querySelector('[data-poll-status]');
           knownStatuses[tid] = badge ? badge.dataset.pollStatus : 'pending';
+          knownStarted[tid] = badge ? (badge.dataset.pollStatus === 'in_progress') : false;
       });
+
+      function updateBadge(badge, status, started) {
+          if (!badge) return;
+          badge.dataset.pollStatus = status;
+          if (status === 'completed') {
+              badge.className = 'text-xs font-bold text-green-600 bg-green-100 px-2.5 py-0.5 rounded-full flex-shrink-0';
+              badge.textContent = 'DONE';
+          } else if (status === 'pending' && started) {
+              badge.className = 'text-xs font-bold text-yellow-700 bg-yellow-100 px-3 py-1 rounded-full flex-shrink-0';
+              badge.textContent = 'IN PROGRESS';
+              badge.dataset.pollStatus = 'in_progress';
+          } else if (status === 'pending' || status === 'not_started') {
+              badge.className = 'text-xs font-bold text-blue-700 bg-blue-100 px-3 py-1 rounded-full flex-shrink-0';
+              badge.textContent = 'PENDING';
+          }
+      }
 
       async function poll() {
           try {
@@ -978,6 +1010,14 @@
                   counterEl.textContent = data.done_count + '/' + data.total;
               }
 
+              // Update progress ring
+              const progressCircle = document.querySelector('[data-poll-counter]')?.closest('.relative')?.querySelector('circle:last-child');
+              if (progressCircle && data.total > 0) {
+                  const pct = Math.round(data.done_count / data.total * 94.2);
+                  progressCircle.setAttribute('stroke-dasharray', pct + ' 94.2');
+                  progressCircle.setAttribute('stroke', data.done_count === data.total ? '#22c55e' : '#1877F2');
+              }
+
               const pendingContainer = document.getElementById('pending-tasks-container');
               const completedContainer = document.getElementById('completed-tasks-container');
               const completedWrapper = document.getElementById('completed-section-wrapper');
@@ -986,26 +1026,31 @@
               let needsMove = false;
 
               data.tasks.forEach(t => {
-                  const card = document.querySelector('[data-poll-task="' + t.task_id + '"]');
+                  const card = document.querySelector('[data-poll-task="' + t.task_id + '"');
                   if (!card) return;
 
                   const oldStatus = knownStatuses[t.task_id] || 'pending';
+                  const wasStarted = knownStarted[t.task_id] || false;
                   const newStatus = t.status;
+                  const nowStarted = t.started;
 
-                  if (oldStatus === newStatus) return;
+                  // Update started tracking
+                  knownStarted[t.task_id] = nowStarted;
+
+                  // Check if status OR started state changed
+                  const statusChanged = (oldStatus !== newStatus);
+                  const startedChanged = (!wasStarted && nowStarted && newStatus !== 'completed');
+
+                  if (!statusChanged && !startedChanged) return;
 
                   knownStatuses[t.task_id] = newStatus;
-                  needsMove = true;
-
                   const badge = card.querySelector('[data-poll-status]');
 
+                  // Completed → Pending/Reverted (revert)
                   if (oldStatus === 'completed' && (newStatus === 'pending' || newStatus === 'reverted' || newStatus === 'not_started')) {
+                      needsMove = true;
                       card.className = 'rounded-3xl shadow-sm overflow-hidden bg-white border-2 border-blue-300';
-                      if (badge) {
-                          badge.dataset.pollStatus = 'pending';
-                          badge.className = 'text-xs font-bold text-blue-700 bg-blue-100 px-3 py-1 rounded-full flex-shrink-0';
-                          badge.textContent = 'PENDING';
-                      }
+                      updateBadge(badge, newStatus, nowStarted);
                       if (pendingContainer) {
                           card.style.transition = 'background-color 0.5s';
                           card.style.backgroundColor = '#FFF7ED';
@@ -1013,13 +1058,11 @@
                           setTimeout(() => { card.style.backgroundColor = ''; }, 2000);
                       }
                   }
-                  else if ((oldStatus === 'pending' || oldStatus === 'reverted' || oldStatus === 'not_started' || oldStatus === 'in_progress') && newStatus === 'completed') {
+                  // Any → Completed
+                  else if (newStatus === 'completed' && oldStatus !== 'completed') {
+                      needsMove = true;
                       card.className = 'rounded-3xl shadow-sm overflow-hidden bg-green-50 border-2 border-green-200';
-                      if (badge) {
-                          badge.dataset.pollStatus = 'completed';
-                          badge.className = 'text-xs font-bold text-green-600 bg-green-100 px-2.5 py-0.5 rounded-full';
-                          badge.textContent = 'DONE';
-                      }
+                      updateBadge(badge, 'completed', false);
                       if (completedContainer) {
                           completedContainer.appendChild(card);
                       }
@@ -1027,26 +1070,19 @@
                           completedWrapper.style.display = '';
                       }
                   }
+                  // Status or started changed within pending (e.g. pending → in_progress)
                   else {
-                      if (badge) {
-                          badge.dataset.pollStatus = newStatus;
-                          if (newStatus === 'completed') {
-                              badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700';
-                              badge.textContent = 'DONE';
-                          } else if (newStatus === 'in_progress') {
-                              badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700';
-                              badge.textContent = 'IN PROGRESS';
-                          } else {
-                              badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700';
-                              badge.textContent = 'PENDING';
-                          }
-                      }
+                      updateBadge(badge, newStatus, nowStarted);
                   }
               });
 
               if (needsMove && completedContainer && completedCountEl) {
                   const completedCount = completedContainer.children.length;
                   completedCountEl.textContent = 'Completed (' + completedCount + ')';
+              }
+              if (needsMove && pendingContainer) {
+                  // Update pending count if needed
+                  const pendingCount = pendingContainer.children.length;
               }
           } catch (e) {
               // Silent fail

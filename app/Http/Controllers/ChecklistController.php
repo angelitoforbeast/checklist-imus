@@ -134,10 +134,10 @@ class ChecklistController extends Controller
         // Load all submissions for today
         [$submissionsByTask, $allSubmissionsByTask] = $this->loadSubmissions($tasks->pluck('id'), $today, $user);
 
-        // For individual mode tasks, the current user's submission
+        // For individual mode / announcement tasks, the current user's submission
         $userSubmissionsByTask = collect();
         foreach ($tasks as $task) {
-            if ($task->submission_mode === 'individual') {
+            if ($task->submission_mode === 'individual' || $task->type === 'announcement') {
                 $taskSubs = $allSubmissionsByTask->get($task->id, collect());
                 $userSub = $taskSubs->firstWhere('user_id', $user->id);
                 if ($userSub) {
@@ -155,7 +155,7 @@ class ChecklistController extends Controller
         $doneCount = 0;
         foreach ($tasks as $task) {
             $taskSubs = $allSubmissionsByTask->get($task->id, collect());
-            if ($task->submission_mode === 'individual') {
+            if ($task->submission_mode === 'individual' || $task->type === 'announcement') {
                 $userSub = $taskSubs->firstWhere('user_id', $user->id);
                 if ($userSub && $userSub->status === 'completed') $doneCount++;
             } else {
@@ -206,7 +206,7 @@ class ChecklistController extends Controller
         foreach ($tasks as $task) {
             $taskSubs = $allSubmissionsByTask->get($task->id, collect());
 
-            if ($task->submission_mode === 'individual') {
+            if ($task->submission_mode === 'individual' || $task->type === 'announcement') {
                 $userSub = $taskSubs->firstWhere('user_id', $user->id);
                 $status = $userSub ? $userSub->status : 'not_started';
                 $started = $userSub && $userSub->started_at ? true : false;
