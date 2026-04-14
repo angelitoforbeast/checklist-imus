@@ -32,6 +32,7 @@ Route::get('/', function () {
 Route::middleware(['web','auth'])->prefix('checklist')->name('checklist.')->group(function () {
     Route::get('/', [ChecklistController::class, 'index'])->name('index');
     Route::get('/poll-status', [ChecklistController::class, 'pollStatus'])->name('poll-status');
+    Route::get('/{task}/poll-conversation', [ChecklistController::class, 'pollConversation'])->name('poll-conversation');
     Route::get('/report', [ChecklistController::class, 'report'])->name('report');
     Route::get('/conversations', [ChecklistController::class, 'conversations'])->name('conversations');
     Route::post('/{task}/submit', [ChecklistController::class, 'submit'])->name('submit');

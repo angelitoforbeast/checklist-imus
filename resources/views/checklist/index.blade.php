@@ -410,6 +410,7 @@
              x-transition.opacity.duration.200ms
              class="fixed inset-0 z-50 flex flex-col bg-white"
              style="display:none"
+             x-effect="if (focusTask === {{ $task->id }}) { startConversationPoll(); } else { stopConversationPoll(); }"
              x-data="{
                uploading: false,
                sendingNote: false,
@@ -439,6 +440,21 @@
                    { text: {{ json_encode($comment->message) }}, time: '{{ $comment->created_at->format('g:i A') }}', ts: {{ $comment->created_at->timestamp }}, by: '{{ $comment->user->name ?? 'Admin' }}', initial: '{{ strtoupper(substr($comment->user->name ?? 'A', 0, 1)) }}' },
                  @endforeach
                ],
+               revertEvents: [
+                 @if($sub)
+                   @foreach($sub->logs->where('action', 'reverted')->sortBy('created_at') as $revLog)
+                     { text: '{{ ($revLog->user->name ?? 'Admin') }} reverted this task to pending', time: '{{ $revLog->created_at->format('g:i A') }}', ts: {{ $revLog->created_at->timestamp }}, by: '{{ $revLog->user->name ?? 'Admin' }}' },
+                   @endforeach
+                 @endif
+               ],
+               submitEvents: [
+                 @if($sub)
+                   @foreach($sub->logs->whereIn('action', ['submitted','updated'])->sortBy('created_at') as $sLog)
+                     { text: '{{ ($sLog->user->name ?? 'Someone') }} {{ $sLog->action === 'submitted' ? 'marked as done' : 're-submitted' }}', time: '{{ $sLog->created_at->format('g:i A') }}', ts: {{ $sLog->created_at->timestamp }} },
+                   @endforeach
+                 @endif
+               ],
+               conversationPollTimer: null,
                get chatMessages() {
                  let messages = [];
 
@@ -465,9 +481,84 @@
                  for (const comment of this.adminComments) {
                    messages.push({ type: 'admin_comment', text: comment.text, time: comment.time, ts: comment.ts, by: comment.by, initial: comment.initial });
                  }
+                 // Add revert events
+                 for (const rev of this.revertEvents) {
+                   messages.push({ type: 'revert', text: rev.text, time: rev.time, ts: rev.ts, by: rev.by });
+                 }
+                 // Add submit events
+                 for (const se of this.submitEvents) {
+                   messages.push({ type: 'event', text: se.text, time: se.time, ts: se.ts });
+                 }
                  // Sort all by timestamp (skip events with ts=0, they stay at top)
                  messages.sort((a, b) => a.ts - b.ts);
                  return messages;
+               },
+               startConversationPoll() {
+                 if (this.conversationPollTimer) return;
+                 const self = this;
+                 this.conversationPollTimer = setInterval(async () => {
+                   try {
+                     const res = await fetch('{{ route('checklist.poll-conversation', $task) }}', {
+                       headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                     });
+                     const data = await res.json();
+                     if (!data.messages) return;
+
+                     // Rebuild arrays from server data
+                     const newPhotos = data.messages.filter(m => m.type === 'photo');
+                     const newNotes = data.messages.filter(m => m.type === 'note');
+                     const newComments = data.messages.filter(m => m.type === 'admin_comment');
+                     const newReverts = data.messages.filter(m => m.type === 'revert');
+                     const newSubmits = data.messages.filter(m => m.type === 'event' && m.ts > 0);
+
+                     // Only update if counts changed (avoid unnecessary reactivity)
+                     if (newPhotos.length !== self.sentPhotos.length) {
+                       self.sentPhotos = newPhotos.map(p => ({ url: p.url, name: p.name, time: p.time, ts: p.ts, by: p.by, isVideo: p.isVideo }));
+                     }
+                     if (newNotes.length !== self.sentNotes.length) {
+                       self.sentNotes = newNotes.map(n => ({ text: n.text, time: n.time, ts: n.ts, by: n.by }));
+                     }
+                     if (newComments.length !== self.adminComments.length) {
+                       self.adminComments = newComments.map(c => ({ text: c.text, time: c.time, ts: c.ts, by: c.by, initial: c.initial }));
+                       // Scroll to bottom for new admin comment
+                       self.$nextTick(() => {
+                         const chatArea = self.$refs.chatArea{{ $task->id }};
+                         if (chatArea) chatArea.scrollTop = chatArea.scrollHeight;
+                       });
+                     }
+                     if (newReverts.length !== self.revertEvents.length) {
+                       self.revertEvents = newReverts.map(r => ({ text: r.text, time: r.time, ts: r.ts, by: r.by }));
+                       // Revert happened - reset state
+                       self.taskCompleted = false;
+                       self.newContentSent = false;
+                       self.$nextTick(() => {
+                         const chatArea = self.$refs.chatArea{{ $task->id }};
+                         if (chatArea) chatArea.scrollTop = chatArea.scrollHeight;
+                       });
+                     }
+                     if (newSubmits.length !== self.submitEvents.length) {
+                       self.submitEvents = newSubmits.map(s => ({ text: s.text, time: s.time, ts: s.ts }));
+                     }
+
+                     // Update started state
+                     if (data.started && !self.taskStarted) {
+                       self.taskStarted = true;
+                       const startEvent = data.messages.find(m => m.type === 'event' && m.ts > 0 && m.text.includes('started'));
+                       if (startEvent) {
+                         self.startedAt = startEvent.time;
+                         self.startedBy = startEvent.text.replace(' started this task', '');
+                       }
+                     }
+                   } catch(e) {
+                     // Silent fail
+                   }
+                 }, 5000);
+               },
+               stopConversationPoll() {
+                 if (this.conversationPollTimer) {
+                   clearInterval(this.conversationPollTimer);
+                   this.conversationPollTimer = null;
+                 }
                },
                async startThisTask() {
                  try {
@@ -808,6 +899,15 @@
                         <p class="text-[10px] text-gray-400 mt-1 ml-1">
                           <span x-text="msg.by"></span> · <span x-text="msg.time"></span>
                         </p>
+                      </div>
+                    </div>
+                  </template>
+
+                  {{-- Revert event (red warning bubble, centered) --}}
+                  <template x-if="msg.type === 'revert'">
+                    <div class="flex justify-center">
+                      <div class="bg-red-100 border border-red-300 rounded-full px-4 py-1.5 text-xs text-red-600 font-medium">
+                        ⚠️ <span x-text="msg.text"></span> · <span x-text="msg.time"></span>
                       </div>
                     </div>
                   </template>

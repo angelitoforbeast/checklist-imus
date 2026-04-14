@@ -237,6 +237,111 @@ class ChecklistController extends Controller
     }
 
     // =========================================================================
+    // POLL CONVERSATION (real-time updates inside focus mode)
+    // =========================================================================
+
+    public function pollConversation(Request $request, ChecklistTask $task)
+    {
+        $today = now()->toDateString();
+        $user = Auth::user();
+
+        // Get the submission for this task
+        $lookupKey = ['checklist_task_id' => $task->id, 'date' => $today];
+        if ($task->submission_mode === 'individual' || $task->type === 'announcement') {
+            $lookupKey['user_id'] = $user->id;
+        }
+
+        $sub = ChecklistSubmission::with(['files', 'logs.user', 'user'])->where($lookupKey)->first();
+
+        $messages = [];
+
+        if ($sub) {
+            // Started event
+            if ($sub->started_at) {
+                $messages[] = [
+                    'type' => 'event',
+                    'text' => ($sub->user->name ?? 'Someone') . ' started this task',
+                    'time' => $sub->started_at->format('g:i A'),
+                    'ts' => $sub->started_at->timestamp,
+                ];
+            }
+
+            // Photos
+            foreach ($sub->files as $f) {
+                $messages[] = [
+                    'type' => 'photo',
+                    'url' => \Storage::url($f->file_path),
+                    'name' => $f->file_original_name,
+                    'time' => $f->created_at->format('g:i A'),
+                    'ts' => $f->created_at->timestamp,
+                    'by' => $sub->user->name ?? 'Unknown',
+                    'isVideo' => $f->isVideo(),
+                ];
+            }
+
+            // Notes
+            foreach ($sub->logs->where('action', 'note_sent') as $log) {
+                if ($log->notes_snapshot) {
+                    $messages[] = [
+                        'type' => 'note',
+                        'text' => $log->notes_snapshot,
+                        'time' => $log->created_at->format('g:i A'),
+                        'ts' => $log->created_at->timestamp,
+                        'by' => $log->user->name ?? $sub->user->name ?? 'Unknown',
+                    ];
+                }
+            }
+
+            // Reverted events
+            foreach ($sub->logs->where('action', 'reverted') as $log) {
+                $messages[] = [
+                    'type' => 'revert',
+                    'text' => ($log->user->name ?? 'Admin') . ' reverted this task to pending',
+                    'time' => $log->created_at->format('g:i A'),
+                    'ts' => $log->created_at->timestamp,
+                    'by' => $log->user->name ?? 'Admin',
+                ];
+            }
+
+            // Submitted events
+            foreach ($sub->logs->whereIn('action', ['submitted', 'updated']) as $log) {
+                $messages[] = [
+                    'type' => 'event',
+                    'text' => ($log->user->name ?? 'Someone') . ' ' . ($log->action === 'submitted' ? 'marked as done' : 're-submitted'),
+                    'time' => $log->created_at->format('g:i A'),
+                    'ts' => $log->created_at->timestamp,
+                ];
+            }
+        }
+
+        // Admin comments
+        $comments = \App\Models\ChecklistTaskComment::where('checklist_task_id', $task->id)
+            ->where('date', $today)
+            ->with('user')
+            ->get();
+
+        foreach ($comments as $c) {
+            $messages[] = [
+                'type' => 'admin_comment',
+                'text' => $c->message,
+                'time' => $c->created_at->format('g:i A'),
+                'ts' => $c->created_at->timestamp,
+                'by' => $c->user->name ?? 'Admin',
+                'initial' => strtoupper(substr($c->user->name ?? 'A', 0, 1)),
+            ];
+        }
+
+        // Sort by timestamp
+        usort($messages, fn($a, $b) => $a['ts'] - $b['ts']);
+
+        return response()->json([
+            'messages' => $messages,
+            'status' => $sub ? $sub->status : 'not_started',
+            'started' => $sub && $sub->started_at ? true : false,
+        ]);
+    }
+
+    // =========================================================================
     // REPORT
     // =========================================================================
 
