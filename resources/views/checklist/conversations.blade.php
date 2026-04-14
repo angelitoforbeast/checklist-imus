@@ -8,6 +8,7 @@
     showCompleted: false,
     commentText: '',
     sending: false,
+    activeUserTab: {},
 
     async sendComment(taskId) {
       if (!this.commentText.trim() || this.sending) return;
@@ -22,8 +23,6 @@
           body: JSON.stringify({ message: this.commentText, date: '{{ $dateObj->toDateString() }}' })
         });
         if (res.ok) {
-          const data = await res.json();
-          // Add to chat
           const chatArea = document.getElementById('admin-chat-' + taskId);
           if (chatArea) {
             const bubble = document.createElement('div');
@@ -49,25 +48,20 @@
     <div class="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm">
       <div class="max-w-lg mx-auto">
         <div class="flex items-center justify-between">
-
-          {{-- Date nav --}}
           <a href="{{ route('checklist.conversations', ['date' => $prevDate, 'role' => $roleFilter]) }}"
              class="flex items-center px-3 py-3.5 text-gray-400 hover:text-gray-700 transition">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
           </a>
-
           <div class="text-center py-3">
             <p class="text-sm font-bold text-gray-800">{{ $dateObj->format('l') }}</p>
             <p class="text-xs text-gray-400">{{ $dateObj->format('M j, Y') }}</p>
           </div>
-
           <a href="{{ route('checklist.conversations', ['date' => $nextDate, 'role' => $roleFilter]) }}"
              class="flex items-center px-3 py-3.5 transition {{ $isToday ? 'text-gray-200 pointer-events-none' : 'text-gray-400 hover:text-gray-700' }}">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
           </a>
         </div>
 
-        {{-- Filter + progress --}}
         <div class="flex items-center justify-between px-4 pb-3 gap-3">
           <form method="GET" action="{{ route('checklist.conversations') }}" class="flex items-center gap-2">
             <input type="hidden" name="date" value="{{ $dateObj->toDateString() }}">
@@ -119,17 +113,32 @@
         @foreach($pendingTasks as $task)
           @php
             $sub = $submissionsByTask->get($task->id);
-            $photoCount = $sub ? $sub->files->filter(fn($f) => $f->isImage() || $f->isVideo())->count() : 0;
+            $taskSubs = $allSubmissionsByTask->get($task->id) ?? collect();
+            $photoCount = $taskSubs->sum(fn($s) => $s->files->filter(fn($f) => $f->isImage() || $f->isVideo())->count());
             $commentCount = ($commentsByTask->get($task->id) ?? collect())->count();
             $reverted = $sub && $sub->status === 'pending';
+            $isIndividual = $task->submission_mode === 'individual';
+            $isAnnouncement = $task->type === 'announcement';
+            $inProgress = $sub && $sub->started_at && $sub->status !== 'completed';
+
+            // For individual mode, count how many assigned users have submitted
+            $individualDone = 0;
+            $individualTotal = $task->assignedUsers->count();
+            if ($isIndividual && $individualTotal > 0) {
+              $individualDone = $taskSubs->where('status', 'completed')->count();
+            }
           @endphp
           <div @click="focusTask = {{ $task->id }}; $nextTick(() => { const el = document.getElementById('admin-chat-{{ $task->id }}'); if(el) el.scrollTop = el.scrollHeight; })"
-               class="bg-white rounded-2xl border-2 border-blue-200 shadow-sm p-4 cursor-pointer hover:shadow-md transition active:scale-[0.98]">
+               class="bg-white rounded-2xl border-2 {{ $reverted ? 'border-amber-200' : 'border-blue-200' }} shadow-sm p-4 cursor-pointer hover:shadow-md transition active:scale-[0.98]">
             <div class="flex items-center justify-between">
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2">
-                  @if($reverted)
+                  @if($isAnnouncement)
+                    <span class="w-2.5 h-2.5 rounded-full bg-purple-400 flex-shrink-0"></span>
+                  @elseif($reverted)
                     <span class="w-2.5 h-2.5 rounded-full bg-amber-400 flex-shrink-0"></span>
+                  @elseif($inProgress)
+                    <span class="w-2.5 h-2.5 rounded-full bg-yellow-400 flex-shrink-0 animate-pulse"></span>
                   @else
                     <span class="w-2.5 h-2.5 rounded-full bg-blue-400 flex-shrink-0"></span>
                   @endif
@@ -141,6 +150,9 @@
                 @if($task->assignedUsers->count())
                   <p class="text-xs text-blue-400 mt-0.5 ml-5 truncate">→ {{ $task->assignedUsers->pluck('name')->implode(', ') }}</p>
                 @endif
+                @if($isIndividual && $individualTotal > 0)
+                  <p class="text-xs text-gray-400 mt-0.5 ml-5">👥 {{ $individualDone }}/{{ $individualTotal }} submitted</p>
+                @endif
               </div>
               <div class="flex items-center gap-2 flex-shrink-0 ml-3">
                 @if($photoCount > 0)
@@ -149,8 +161,12 @@
                 @if($commentCount > 0)
                   <span class="text-xs bg-blue-50 text-blue-500 px-2 py-0.5 rounded-full font-medium">💬 {{ $commentCount }}</span>
                 @endif
-                @if($reverted)
+                @if($isAnnouncement)
+                  <span class="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full font-semibold">ANNOUNCE</span>
+                @elseif($reverted)
                   <span class="text-xs bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full font-semibold">REVERTED</span>
+                @elseif($inProgress)
+                  <span class="text-xs bg-yellow-50 text-yellow-600 px-2 py-0.5 rounded-full font-semibold">IN PROGRESS</span>
                 @else
                   <span class="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-semibold">PENDING</span>
                 @endif
@@ -175,7 +191,8 @@
               @foreach($completedTasks as $task)
                 @php
                   $sub = $submissionsByTask->get($task->id);
-                  $photoCount = $sub ? $sub->files->filter(fn($f) => $f->isImage() || $f->isVideo())->count() : 0;
+                  $taskSubs = $allSubmissionsByTask->get($task->id) ?? collect();
+                  $photoCount = $taskSubs->sum(fn($s) => $s->files->filter(fn($f) => $f->isImage() || $f->isVideo())->count());
                   $commentCount = ($commentsByTask->get($task->id) ?? collect())->count();
                 @endphp
                 <div @click="focusTask = {{ $task->id }}; $nextTick(() => { const el = document.getElementById('admin-chat-{{ $task->id }}'); if(el) el.scrollTop = el.scrollHeight; })"
@@ -214,51 +231,108 @@
     @foreach($tasks as $task)
       @php
         $sub = $submissionsByTask->get($task->id);
+        $taskSubs = $allSubmissionsByTask->get($task->id) ?? collect();
         $done = $sub && $sub->status === 'completed';
         $reverted = $sub && $sub->status === 'pending';
-        $subFiles = ($done || $reverted) ? $sub->files : collect();
-        $imageFiles = $subFiles->filter(fn($f) => $f->isImage() || $f->isVideo());
+        $isIndividual = $task->submission_mode === 'individual';
+        $isAnnouncement = $task->type === 'announcement';
         $taskComments = $commentsByTask->get($task->id) ?? collect();
 
-        // Build timeline: interleave photos (grouped by batch), notes, and admin comments
-        $timeline = collect();
+        // For individual mode, build per-user data
+        $userTabs = collect();
+        if ($isIndividual) {
+          foreach ($task->assignedUsers as $assignedUser) {
+            $userSub = $taskSubs->where('user_id', $assignedUser->id)->first();
+            $userTabs->push([
+              'user' => $assignedUser,
+              'submission' => $userSub,
+              'status' => $userSub ? $userSub->status : 'not_started',
+            ]);
+          }
+        }
 
-        // Group photos by batch (2-min gap)
-        $photoBatches = collect();
-        $currentBatch = collect();
-        $lastTime = null;
-        foreach ($imageFiles->sortBy('created_at') as $file) {
-          $fileTime = $file->created_at;
-          if ($lastTime && abs($fileTime->diffInSeconds($lastTime)) > 120) {
-            if ($currentBatch->isNotEmpty()) {
-              $photoBatches->push(['type' => 'photo_batch', 'files' => $currentBatch, 'time' => $currentBatch->first()->created_at, 'user' => $sub->user]);
+        // Build timeline function (reused for group and per-user)
+        // For group mode: merge all submissions into one timeline
+        // For individual mode: build per-user timelines
+        $buildTimeline = function($submissions, $comments = null) use ($task) {
+          $timeline = collect();
+          foreach ($submissions as $sub) {
+            if (!$sub) continue;
+            $subFiles = $sub->files ?? collect();
+            $imageFiles = $subFiles->filter(fn($f) => $f->isImage() || $f->isVideo());
+
+            // Started event
+            if ($sub->started_at) {
+              $timeline->push(['type' => 'event', 'text' => ($sub->user->name ?? 'User') . ' started this task', 'time' => $sub->started_at, 'user' => $sub->user]);
             }
+
+            // Photo batches
             $currentBatch = collect();
+            $lastTime = null;
+            foreach ($imageFiles->sortBy('created_at') as $file) {
+              $fileTime = $file->created_at;
+              if ($lastTime && abs($fileTime->diffInSeconds($lastTime)) > 120) {
+                if ($currentBatch->isNotEmpty()) {
+                  $timeline->push(['type' => 'photo_batch', 'files' => $currentBatch, 'time' => $currentBatch->first()->created_at, 'user' => $sub->user]);
+                }
+                $currentBatch = collect();
+              }
+              $currentBatch->push($file);
+              $lastTime = $fileTime;
+            }
+            if ($currentBatch->isNotEmpty()) {
+              $timeline->push(['type' => 'photo_batch', 'files' => $currentBatch, 'time' => $currentBatch->first()->created_at, 'user' => $sub->user]);
+            }
+
+            // Notes from logs
+            foreach (($sub->logs ?? collect())->where('action', 'note_sent')->sortBy('created_at') as $log) {
+              $timeline->push(['type' => 'note', 'text' => $log->notes_snapshot ?? '', 'time' => $log->created_at, 'user' => $log->user]);
+            }
+
+            // Acknowledged event
+            foreach (($sub->logs ?? collect())->where('action', 'acknowledged')->sortBy('created_at') as $log) {
+              $timeline->push(['type' => 'event', 'text' => ($log->user->name ?? 'User') . ' acknowledged', 'time' => $log->created_at, 'user' => $log->user]);
+            }
+
+            // Submitted event
+            if ($sub->status === 'completed' && $sub->updated_at) {
+              $hasSubmitLog = ($sub->logs ?? collect())->where('action', 'submitted')->isNotEmpty();
+              if (!$hasSubmitLog && $sub->files->count() > 0) {
+                // Infer submission time from last file
+                $lastFile = $sub->files->sortByDesc('created_at')->first();
+                if ($lastFile) {
+                  $timeline->push(['type' => 'event', 'text' => ($sub->user->name ?? 'User') . ' submitted', 'time' => $lastFile->created_at, 'user' => $sub->user]);
+                }
+              }
+            }
           }
-          $currentBatch->push($file);
-          $lastTime = $fileTime;
-        }
-        if ($currentBatch->isNotEmpty()) {
-          $photoBatches->push(['type' => 'photo_batch', 'files' => $currentBatch, 'time' => $currentBatch->first()->created_at, 'user' => $sub->user]);
-        }
-        foreach ($photoBatches as $batch) {
-          $timeline->push($batch);
-        }
 
-        // Add notes from submission_logs (note_sent)
-        if ($sub) {
-          foreach ($sub->logs->where('action', 'note_sent')->sortBy('created_at') as $log) {
-            $timeline->push(['type' => 'note', 'text' => $log->notes_snapshot ?? '', 'time' => $log->created_at, 'user' => $log->user]);
+          // Admin comments
+          if ($comments) {
+            foreach ($comments as $comment) {
+              $timeline->push(['type' => 'admin_comment', 'text' => $comment->message, 'time' => $comment->created_at, 'user' => $comment->user]);
+            }
           }
-        }
 
-        // Add admin comments
-        foreach ($taskComments as $comment) {
-          $timeline->push(['type' => 'admin_comment', 'text' => $comment->message, 'time' => $comment->created_at, 'user' => $comment->user]);
-        }
+          return $timeline->sortBy('time')->values();
+        };
 
-        // Sort by time
-        $timeline = $timeline->sortBy('time')->values();
+        // Build the main timeline
+        if ($isIndividual) {
+          // For individual mode, we still build a combined timeline for the main view
+          $timeline = $buildTimeline($taskSubs, $taskComments);
+          // Also build per-user timelines
+          $userTimelines = [];
+          foreach ($userTabs as $ut) {
+            $userTimelines[$ut['user']->id] = $buildTimeline(
+              $ut['submission'] ? collect([$ut['submission']]) : collect(),
+              null // comments shown only in combined view
+            );
+          }
+        } else {
+          $timeline = $buildTimeline($taskSubs, $taskComments);
+          $userTimelines = [];
+        }
       @endphp
 
       <div x-show="focusTask === {{ $task->id }}"
@@ -275,7 +349,13 @@
           <div class="flex-1 min-w-0">
             <p class="font-semibold text-sm truncate">{{ $task->title }}</p>
             <p class="text-xs text-blue-100">
-              @if($done) ✅ Completed @elseif($reverted) ↩ Reverted @else ⏳ Pending @endif
+              @if($isAnnouncement) 📢 Announcement
+              @elseif($done) ✅ Completed
+              @elseif($reverted) ↩ Reverted
+              @elseif($sub && $sub->started_at) 🔄 In Progress
+              @else ⏳ Pending
+              @endif
+              @if($isIndividual) · Individual Mode @endif
               @if($sub && $sub->user) · {{ $sub->user->name }} @endif
             </p>
           </div>
@@ -287,6 +367,33 @@
             </form>
           @endif
         </div>
+
+        {{-- Individual mode: user tabs --}}
+        @if($isIndividual && $userTabs->count() > 1)
+          <div class="bg-white border-b border-gray-200 flex-shrink-0 overflow-x-auto">
+            <div class="flex px-2 py-2 gap-1">
+              <button @click="activeUserTab[{{ $task->id }}] = 'all'"
+                      :class="(!activeUserTab[{{ $task->id }}] || activeUserTab[{{ $task->id }}] === 'all') ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'"
+                      class="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition">
+                All
+              </button>
+              @foreach($userTabs as $ut)
+                <button @click="activeUserTab[{{ $task->id }}] = {{ $ut['user']->id }}"
+                        :class="activeUserTab[{{ $task->id }}] === {{ $ut['user']->id }} ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'"
+                        class="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition flex items-center gap-1">
+                  {{ $ut['user']->name }}
+                  @if($ut['status'] === 'completed')
+                    <span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
+                  @elseif($ut['submission'] && $ut['submission']->started_at)
+                    <span class="w-2 h-2 rounded-full bg-yellow-400 inline-block"></span>
+                  @else
+                    <span class="w-2 h-2 rounded-full bg-gray-300 inline-block"></span>
+                  @endif
+                </button>
+              @endforeach
+            </div>
+          </div>
+        @endif
 
         {{-- Reference files (if any) --}}
         @php $refFiles = $task->referenceFiles ?? collect(); @endphp
@@ -335,149 +442,238 @@
                 <p class="text-xs text-gray-400 mt-0.5">{{ $task->description }}</p>
               @endif
               <p class="text-[10px] text-gray-300 mt-1">
-                {{ in_array($task->type, ['photo','photo_note']) ? '📸 Photo required' : ($task->type === 'note' ? '📝 Note required' : '📎 Any submission') }}
+                @if($isAnnouncement) 📢 Announcement — users must acknowledge
+                @elseif(in_array($task->type, ['photo','photo_note'])) 📸 Photo required
+                @elseif($task->type === 'note') 📝 Note required
+                @else 📎 Any submission
+                @endif
+                @if($isIndividual) · 👥 Individual @endif
               </p>
             </div>
           </div>
 
-          @if($timeline->isEmpty())
-            <div class="text-center py-8">
-              <p class="text-gray-400 text-sm">No messages yet</p>
-              <p class="text-gray-300 text-xs mt-1">Waiting for user submission...</p>
-            </div>
-          @endif
-
-          {{-- Timeline messages --}}
-          @foreach($timeline as $item)
-            @if($item['type'] === 'photo_batch')
-              {{-- User photos = LEFT side (received by admin) - Messenger style --}}
-              <div class="flex justify-start mb-3">
-                <div class="max-w-[85%]">
-                  <div class="flex items-end gap-2">
-                    <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 flex-shrink-0">
-                      {{ strtoupper(substr($item['user']->name ?? '?', 0, 1)) }}
-                    </div>
-                    <div>
-                      @php $batchFiles = $item['files']; $count = $batchFiles->count(); @endphp
-                      @if($count === 1)
-                        {{-- Single photo: large bubble --}}
-                        <div class="rounded-2xl rounded-bl-md overflow-hidden shadow-sm border border-gray-200">
-                          <img src="{{ Storage::url($batchFiles->first()->file_path) }}"
-                               data-lightbox-src="{{ Storage::url($batchFiles->first()->file_path) }}"
-                               data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
-                               data-lightbox-time="{{ $batchFiles->first()->created_at->format('M d, Y \u00b7 g:i A') }}"
-                               @click="$dispatch('open-lightbox', { src: '{{ Storage::url($batchFiles->first()->file_path) }}', taskId: {{ $task->id }} })"
-                               class="w-56 h-56 object-cover cursor-zoom-in hover:opacity-90 transition">
-                        </div>
-                      @elseif($count === 2)
-                        {{-- Two photos: side by side --}}
-                        <div class="flex gap-0.5 rounded-2xl rounded-bl-md overflow-hidden shadow-sm border border-gray-200">
-                          @foreach($batchFiles as $file)
-                            <img src="{{ Storage::url($file->file_path) }}"
-                                 data-lightbox-src="{{ Storage::url($file->file_path) }}"
-                                 data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
-                                 data-lightbox-time="{{ $file->created_at->format('M d, Y \u00b7 g:i A') }}"
-                                 @click="$dispatch('open-lightbox', { src: '{{ Storage::url($file->file_path) }}', taskId: {{ $task->id }} })"
-                                 class="w-32 h-40 object-cover cursor-zoom-in hover:opacity-90 transition">
-                          @endforeach
-                        </div>
-                      @elseif($count === 3)
-                        {{-- Three photos: 1 big + 2 small --}}
-                        <div class="rounded-2xl rounded-bl-md overflow-hidden shadow-sm border border-gray-200">
-                          <img src="{{ Storage::url($batchFiles->values()[0]->file_path) }}"
-                               data-lightbox-src="{{ Storage::url($batchFiles->values()[0]->file_path) }}"
-                               data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
-                               data-lightbox-time="{{ $batchFiles->values()[0]->created_at->format('M d, Y \u00b7 g:i A') }}"
-                               @click="$dispatch('open-lightbox', { src: '{{ Storage::url($batchFiles->values()[0]->file_path) }}', taskId: {{ $task->id }} })"
-                               class="w-64 h-36 object-cover cursor-zoom-in hover:opacity-90 transition">
-                          <div class="flex gap-0.5 mt-0.5">
-                            @foreach($batchFiles->values()->slice(1) as $file)
-                              <img src="{{ Storage::url($file->file_path) }}"
-                                   data-lightbox-src="{{ Storage::url($file->file_path) }}"
-                                   data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
-                                   data-lightbox-time="{{ $file->created_at->format('M d, Y \u00b7 g:i A') }}"
-                                   @click="$dispatch('open-lightbox', { src: '{{ Storage::url($file->file_path) }}', taskId: {{ $task->id }} })"
-                                   class="flex-1 h-28 object-cover cursor-zoom-in hover:opacity-90 transition">
-                            @endforeach
-                          </div>
-                        </div>
-                      @else
-                        {{-- 4+ photos: 2-column grid --}}
-                        <div class="rounded-2xl rounded-bl-md overflow-hidden shadow-sm border border-gray-200">
-                          <div class="grid grid-cols-2 gap-0.5">
-                            @foreach($batchFiles->take(4) as $idx => $file)
-                              <div class="relative">
-                                <img src="{{ Storage::url($file->file_path) }}"
-                                     data-lightbox-src="{{ Storage::url($file->file_path) }}"
-                                     data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
-                                     data-lightbox-time="{{ $file->created_at->format('M d, Y \u00b7 g:i A') }}"
-                                     @click="$dispatch('open-lightbox', { src: '{{ Storage::url($file->file_path) }}', taskId: {{ $task->id }} })"
-                                     class="w-full h-32 object-cover cursor-zoom-in hover:opacity-90 transition">
-                                @if($idx === 3 && $count > 4)
-                                  <div @click="$dispatch('open-lightbox', { src: '{{ Storage::url($file->file_path) }}', taskId: {{ $task->id }} })"
-                                       class="absolute inset-0 bg-black/50 flex items-center justify-center cursor-zoom-in">
-                                    <span class="text-white text-lg font-bold">+{{ $count - 4 }}</span>
-                                  </div>
-                                @endif
-                              </div>
-                            @endforeach
-                          </div>
-                          @if($count > 4)
-                            <div class="grid grid-cols-3 gap-0.5 mt-0.5">
-                              @foreach($batchFiles->slice(4) as $file)
-                                <img src="{{ Storage::url($file->file_path) }}"
-                                     data-lightbox-src="{{ Storage::url($file->file_path) }}"
-                                     data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
-                                     data-lightbox-time="{{ $file->created_at->format('M d, Y \u00b7 g:i A') }}"
-                                     @click="$dispatch('open-lightbox', { src: '{{ Storage::url($file->file_path) }}', taskId: {{ $task->id }} })"
-                                     class="w-full h-24 object-cover cursor-zoom-in hover:opacity-90 transition">
-                              @endforeach
-                            </div>
-                          @endif
-                        </div>
-                      @endif
-                      <p class="text-[10px] text-gray-400 mt-1 ml-1">{{ $item['user']->name ?? 'User' }} · {{ $item['time']->format('g:i A') }}</p>
-                    </div>
-                  </div>
-                </div>
+          {{-- Combined timeline (shown for group mode, or "All" tab in individual mode) --}}
+          <div x-show="!activeUserTab[{{ $task->id }}] || activeUserTab[{{ $task->id }}] === 'all'">
+            @if($timeline->isEmpty())
+              <div class="text-center py-8">
+                <p class="text-gray-400 text-sm">No messages yet</p>
+                <p class="text-gray-300 text-xs mt-1">Waiting for user submission...</p>
               </div>
+            @endif
 
-            @elseif($item['type'] === 'note')
-              {{-- User note = LEFT side --}}
-              @if(!empty($item['text']))
+            @foreach($timeline as $item)
+              @if($item['type'] === 'event')
+                {{-- System event (started, submitted, acknowledged) --}}
+                <div class="text-center mb-3">
+                  <span class="inline-block bg-white/80 text-gray-500 text-xs px-3 py-1 rounded-full shadow-sm border border-gray-100">
+                    {{ $item['text'] }} · {{ $item['time']->format('g:i A') }}
+                  </span>
+                </div>
+
+              @elseif($item['type'] === 'photo_batch')
+                {{-- User photos = LEFT side --}}
                 <div class="flex justify-start mb-3">
-                  <div class="max-w-[80%]">
+                  <div class="max-w-[85%]">
                     <div class="flex items-end gap-2">
-                      <div class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 flex-shrink-0">
+                      <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 flex-shrink-0">
                         {{ strtoupper(substr($item['user']->name ?? '?', 0, 1)) }}
                       </div>
                       <div>
-                        <div class="bg-white rounded-2xl rounded-bl-md px-4 py-2.5 shadow-sm border border-gray-100">
-                          <p class="text-sm text-gray-800">{{ $item['text'] }}</p>
-                        </div>
+                        @php $batchFiles = $item['files']; $count = $batchFiles->count(); @endphp
+                        @if($count === 1)
+                          @php $f = $batchFiles->first(); @endphp
+                          <div class="rounded-2xl rounded-bl-md overflow-hidden shadow-sm border border-gray-200">
+                            @if($f->isVideo())
+                              <video src="{{ Storage::url($f->file_path) }}" controls class="w-56 h-56 object-cover"></video>
+                            @else
+                              <img src="{{ Storage::url($f->file_path) }}"
+                                   data-lightbox-src="{{ Storage::url($f->file_path) }}"
+                                   data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
+                                   data-lightbox-time="{{ $f->created_at->format('M d, Y · g:i A') }}"
+                                   @click="$dispatch('open-lightbox', { src: '{{ Storage::url($f->file_path) }}', taskId: {{ $task->id }} })"
+                                   class="w-56 h-56 object-cover cursor-zoom-in hover:opacity-90 transition">
+                            @endif
+                          </div>
+                        @elseif($count === 2)
+                          <div class="flex gap-0.5 rounded-2xl rounded-bl-md overflow-hidden shadow-sm border border-gray-200">
+                            @foreach($batchFiles as $file)
+                              @if($file->isVideo())
+                                <video src="{{ Storage::url($file->file_path) }}" controls class="w-32 h-40 object-cover"></video>
+                              @else
+                                <img src="{{ Storage::url($file->file_path) }}"
+                                     data-lightbox-src="{{ Storage::url($file->file_path) }}"
+                                     data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
+                                     data-lightbox-time="{{ $file->created_at->format('M d, Y · g:i A') }}"
+                                     @click="$dispatch('open-lightbox', { src: '{{ Storage::url($file->file_path) }}', taskId: {{ $task->id }} })"
+                                     class="w-32 h-40 object-cover cursor-zoom-in hover:opacity-90 transition">
+                              @endif
+                            @endforeach
+                          </div>
+                        @else
+                          {{-- 3+ photos: grid --}}
+                          <div class="rounded-2xl rounded-bl-md overflow-hidden shadow-sm border border-gray-200">
+                            <div class="grid grid-cols-2 gap-0.5">
+                              @foreach($batchFiles->take(4) as $idx => $file)
+                                <div class="relative">
+                                  @if($file->isVideo())
+                                    <video src="{{ Storage::url($file->file_path) }}" controls class="w-full h-32 object-cover"></video>
+                                  @else
+                                    <img src="{{ Storage::url($file->file_path) }}"
+                                         data-lightbox-src="{{ Storage::url($file->file_path) }}"
+                                         data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
+                                         data-lightbox-time="{{ $file->created_at->format('M d, Y · g:i A') }}"
+                                         @click="$dispatch('open-lightbox', { src: '{{ Storage::url($file->file_path) }}', taskId: {{ $task->id }} })"
+                                         class="w-full h-32 object-cover cursor-zoom-in hover:opacity-90 transition">
+                                  @endif
+                                  @if($idx === 3 && $count > 4)
+                                    <div @click="$dispatch('open-lightbox', { src: '{{ Storage::url($file->file_path) }}', taskId: {{ $task->id }} })"
+                                         class="absolute inset-0 bg-black/50 flex items-center justify-center cursor-zoom-in">
+                                      <span class="text-white text-lg font-bold">+{{ $count - 4 }}</span>
+                                    </div>
+                                  @endif
+                                </div>
+                              @endforeach
+                            </div>
+                            @if($count > 4)
+                              <div class="grid grid-cols-3 gap-0.5 mt-0.5">
+                                @foreach($batchFiles->slice(4) as $file)
+                                  @if($file->isVideo())
+                                    <video src="{{ Storage::url($file->file_path) }}" controls class="w-full h-24 object-cover"></video>
+                                  @else
+                                    <img src="{{ Storage::url($file->file_path) }}"
+                                         data-lightbox-src="{{ Storage::url($file->file_path) }}"
+                                         data-lightbox-sender="{{ $item['user']->name ?? 'User' }}"
+                                         data-lightbox-time="{{ $file->created_at->format('M d, Y · g:i A') }}"
+                                         @click="$dispatch('open-lightbox', { src: '{{ Storage::url($file->file_path) }}', taskId: {{ $task->id }} })"
+                                         class="w-full h-24 object-cover cursor-zoom-in hover:opacity-90 transition">
+                                  @endif
+                                @endforeach
+                              </div>
+                            @endif
+                          </div>
+                        @endif
                         <p class="text-[10px] text-gray-400 mt-1 ml-1">{{ $item['user']->name ?? 'User' }} · {{ $item['time']->format('g:i A') }}</p>
                       </div>
                     </div>
                   </div>
                 </div>
-              @endif
 
-            @elseif($item['type'] === 'admin_comment')
-              {{-- Admin comment = RIGHT side (sent by admin) --}}
-              <div class="flex justify-end mb-3">
-                <div class="max-w-[80%]">
-                  <div class="bg-blue-500 text-white rounded-2xl rounded-br-md px-4 py-2.5 shadow-sm">
-                    <p class="text-sm">{{ $item['text'] }}</p>
+              @elseif($item['type'] === 'note')
+                {{-- User note = LEFT side --}}
+                @if(!empty($item['text']))
+                  <div class="flex justify-start mb-3">
+                    <div class="max-w-[80%]">
+                      <div class="flex items-end gap-2">
+                        <div class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 flex-shrink-0">
+                          {{ strtoupper(substr($item['user']->name ?? '?', 0, 1)) }}
+                        </div>
+                        <div>
+                          <div class="bg-white rounded-2xl rounded-bl-md px-4 py-2.5 shadow-sm border border-gray-100">
+                            <p class="text-sm text-gray-800">{{ $item['text'] }}</p>
+                          </div>
+                          <p class="text-[10px] text-gray-400 mt-1 ml-1">{{ $item['user']->name ?? 'User' }} · {{ $item['time']->format('g:i A') }}</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <p class="text-[10px] text-gray-400 mt-1 text-right">{{ $item['user']->name ?? 'Admin' }} · {{ $item['time']->format('g:i A') }}</p>
+                @endif
+
+              @elseif($item['type'] === 'admin_comment')
+                {{-- Admin comment = RIGHT side --}}
+                <div class="flex justify-end mb-3">
+                  <div class="max-w-[80%]">
+                    <div class="bg-blue-500 text-white rounded-2xl rounded-br-md px-4 py-2.5 shadow-sm">
+                      <p class="text-sm">{{ $item['text'] }}</p>
+                    </div>
+                    <p class="text-[10px] text-gray-400 mt-1 text-right">{{ $item['user']->name ?? 'Admin' }} · {{ $item['time']->format('g:i A') }}</p>
+                  </div>
                 </div>
+              @endif
+            @endforeach
+          </div>
+
+          {{-- Per-user timelines (individual mode) --}}
+          @if($isIndividual)
+            @foreach($userTabs as $ut)
+              @php $userTL = $userTimelines[$ut['user']->id] ?? collect(); @endphp
+              <div x-show="activeUserTab[{{ $task->id }}] === {{ $ut['user']->id }}">
+                @if($userTL->isEmpty())
+                  <div class="text-center py-8">
+                    <p class="text-gray-400 text-sm">{{ $ut['user']->name }} has not started yet</p>
+                  </div>
+                @endif
+
+                @foreach($userTL as $item)
+                  @if($item['type'] === 'event')
+                    <div class="text-center mb-3">
+                      <span class="inline-block bg-white/80 text-gray-500 text-xs px-3 py-1 rounded-full shadow-sm border border-gray-100">
+                        {{ $item['text'] }} · {{ $item['time']->format('g:i A') }}
+                      </span>
+                    </div>
+                  @elseif($item['type'] === 'photo_batch')
+                    <div class="flex justify-start mb-3">
+                      <div class="max-w-[85%]">
+                        <div class="flex items-end gap-2">
+                          <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 flex-shrink-0">
+                            {{ strtoupper(substr($ut['user']->name, 0, 1)) }}
+                          </div>
+                          <div>
+                            @php $batchFiles = $item['files']; $count = $batchFiles->count(); @endphp
+                            <div class="rounded-2xl rounded-bl-md overflow-hidden shadow-sm border border-gray-200">
+                              <div class="grid {{ $count > 1 ? 'grid-cols-2' : '' }} gap-0.5">
+                                @foreach($batchFiles->take(4) as $idx => $file)
+                                  <div class="relative">
+                                    @if($file->isVideo())
+                                      <video src="{{ Storage::url($file->file_path) }}" controls class="w-full {{ $count === 1 ? 'h-56' : 'h-32' }} object-cover"></video>
+                                    @else
+                                      <img src="{{ Storage::url($file->file_path) }}"
+                                           data-lightbox-src="{{ Storage::url($file->file_path) }}"
+                                           data-lightbox-sender="{{ $ut['user']->name }}"
+                                           data-lightbox-time="{{ $file->created_at->format('M d, Y · g:i A') }}"
+                                           @click="$dispatch('open-lightbox', { src: '{{ Storage::url($file->file_path) }}', taskId: {{ $task->id }} })"
+                                           class="w-full {{ $count === 1 ? 'h-56' : 'h-32' }} object-cover cursor-zoom-in hover:opacity-90 transition">
+                                    @endif
+                                    @if($idx === 3 && $count > 4)
+                                      <div class="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                        <span class="text-white text-lg font-bold">+{{ $count - 4 }}</span>
+                                      </div>
+                                    @endif
+                                  </div>
+                                @endforeach
+                              </div>
+                            </div>
+                            <p class="text-[10px] text-gray-400 mt-1 ml-1">{{ $ut['user']->name }} · {{ $item['time']->format('g:i A') }}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  @elseif($item['type'] === 'note')
+                    @if(!empty($item['text']))
+                      <div class="flex justify-start mb-3">
+                        <div class="max-w-[80%]">
+                          <div class="flex items-end gap-2">
+                            <div class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 flex-shrink-0">
+                              {{ strtoupper(substr($ut['user']->name, 0, 1)) }}
+                            </div>
+                            <div>
+                              <div class="bg-white rounded-2xl rounded-bl-md px-4 py-2.5 shadow-sm border border-gray-100">
+                                <p class="text-sm text-gray-800">{{ $item['text'] }}</p>
+                              </div>
+                              <p class="text-[10px] text-gray-400 mt-1 ml-1">{{ $ut['user']->name }} · {{ $item['time']->format('g:i A') }}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    @endif
+                  @endif
+                @endforeach
               </div>
-            @endif
-          @endforeach
+            @endforeach
+          @endif
 
         </div>
 
-        {{-- Bottom bar: Admin comment input (Messenger style) --}}
+        {{-- Bottom bar: Admin comment input --}}
         <div class="flex-shrink-0 bg-white border-t border-gray-200 px-4 py-3 safe-area-bottom">
           <div class="flex items-center gap-2 max-w-lg mx-auto">
             <div class="flex-1">
@@ -525,8 +721,8 @@
             }
           }
         }
-        $sub = $submissionsByTask->get($task->id);
-        if ($sub) {
+        $taskSubs = $allSubmissionsByTask->get($task->id) ?? collect();
+        foreach ($taskSubs as $sub) {
           foreach ($sub->files->filter(fn($f) => $f->isImage())->sortBy('created_at') as $f) {
             $taskImages->push([
               'src' => Storage::url($f->file_path),
@@ -631,24 +827,20 @@
          class="fixed inset-0 z-[60] bg-black/90 flex flex-col items-center justify-center"
          style="display:none; touch-action:none">
 
-      {{-- Close button --}}
       <button @click="lightbox = false"
               class="absolute top-4 right-4 w-9 h-9 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-lg transition z-20">✕</button>
 
-      {{-- Counter --}}
       <template x-if="images.length > 1">
         <div class="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-3 py-1 rounded-full z-20"
              x-text="(currentIndex + 1) + ' / ' + images.length"></div>
       </template>
 
-      {{-- Prev button --}}
       <template x-if="images.length > 1">
         <button @click.stop="prev()"
                 :class="currentIndex === 0 ? 'opacity-20 pointer-events-none' : 'opacity-80 hover:opacity-100'"
                 class="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-xl transition z-20">‹</button>
       </template>
 
-      {{-- Image with zoom --}}
       <div class="flex-1 flex items-center justify-center w-full overflow-hidden p-4"
            style="touch-action:none"
            @wheel.prevent="handleWheel($event)"
@@ -663,14 +855,12 @@
              draggable="false">
       </div>
 
-      {{-- Next button --}}
       <template x-if="images.length > 1">
         <button @click.stop="next()"
                 :class="currentIndex === images.length - 1 ? 'opacity-20 pointer-events-none' : 'opacity-80 hover:opacity-100'"
                 class="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center text-xl transition z-20">›</button>
       </template>
 
-      {{-- Sender info caption bar --}}
       <div class="w-full flex-shrink-0 bg-black/70 px-4 py-3 text-center z-20" @click.stop>
         <p class="text-white text-sm font-medium" x-text="senderName"></p>
         <p class="text-white/60 text-xs" x-text="senderTime"></p>

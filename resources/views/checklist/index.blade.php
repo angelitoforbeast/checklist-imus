@@ -57,23 +57,24 @@
       @endif
       @if($errors->any())
         <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl text-sm space-y-1">
-          @foreach($errors->all() as $e)<div>⚠️ {{ $e }}</div>@endforeach
+          @foreach($errors->all() as $e)<div>{{ $e }}</div>@endforeach
         </div>
       @endif
 
       @php
         $isAdmin = Auth::user()?->isAdmin();
-        // A task is "done" only if it has a submission with status 'completed'
-        // A task with a reverted submission (status 'pending') should appear in pending list
-        $pendingTasks = $tasks->filter(fn($t) => !$submissionsByTask->has($t->id) || ($submissionsByTask->has($t->id) && $submissionsByTask->get($t->id)->status === 'pending'));
-        $doneTasks    = $tasks->filter(fn($t) => $submissionsByTask->has($t->id) && $submissionsByTask->get($t->id)->status === 'completed');
+        $userId  = Auth::id();
 
-        $allImageUrls = [];
-        foreach($tasks as $task) {
-            $sub = $submissionsByTask->get($task->id);
-            if (!$sub) continue;
-            foreach($sub->files->filter(fn($f) => $f->isImage()) as $f) {
-                $allImageUrls[] = Storage::url($f->file_path);
+        // Determine task status based on submission mode
+        $pendingTasks = collect();
+        $doneTasks    = collect();
+
+        foreach ($tasks as $task) {
+            $sub = $userSubmissionsByTask->get($task->id);
+            if ($sub && $sub->status === 'completed') {
+                $doneTasks->push($task);
+            } else {
+                $pendingTasks->push($task);
             }
         }
       @endphp
@@ -87,11 +88,14 @@
       @else
 
         {{-- ===== PENDING TASK CARDS ===== --}}
-        <div id="pending-tasks-container">
+        <div id="pending-tasks-container" class="space-y-3">
         @foreach($pendingTasks as $task)
           @php
+            $sub = $userSubmissionsByTask->get($task->id);
+            $hasStarted = $sub && $sub->started_at;
             $assignedIds = $task->assignedUsers->pluck('id')->toArray();
-            $isAssigned  = empty($assignedIds) || in_array(Auth::id(), $assignedIds);
+            $isAssigned  = empty($assignedIds) || in_array($userId, $assignedIds);
+            $isAnnouncement = $task->type === 'announcement';
           @endphp
 
           <div class="rounded-3xl shadow-sm overflow-hidden bg-white border-2 border-blue-300" data-poll-task="{{ $task->id }}">
@@ -99,8 +103,12 @@
               <div class="flex items-start justify-between gap-3">
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2.5">
-                    <div class="w-7 h-7 rounded-full border-2 border-blue-400 bg-blue-50 flex items-center justify-center flex-shrink-0">
-                      <div class="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
+                    <div class="w-7 h-7 rounded-full border-2 {{ $isAnnouncement ? 'border-amber-400 bg-amber-50' : 'border-blue-400 bg-blue-50' }} flex items-center justify-center flex-shrink-0">
+                      @if($isAnnouncement)
+                        <span class="text-sm">📢</span>
+                      @else
+                        <div class="w-2.5 h-2.5 rounded-full {{ $hasStarted ? 'bg-yellow-500' : 'bg-blue-500' }}"></div>
+                      @endif
                     </div>
                     <h2 class="text-base font-bold text-gray-800 leading-tight">{{ $task->title }}</h2>
                   </div>
@@ -111,18 +119,39 @@
                       </span>
                     </div>
                   @endif
+                  @if($task->description)
+                    <p class="ml-9 mt-1 text-xs text-gray-500 line-clamp-2">{{ $task->description }}</p>
+                  @endif
                 </div>
-                <span class="text-xs font-bold text-blue-700 bg-blue-100 px-3 py-1 rounded-full flex-shrink-0" data-poll-status="pending">PENDING</span>
+                <span class="text-xs font-bold px-3 py-1 rounded-full flex-shrink-0
+                  {{ $hasStarted ? 'text-yellow-700 bg-yellow-100' : 'text-blue-700 bg-blue-100' }}"
+                  data-poll-status="{{ $hasStarted ? 'in_progress' : 'pending' }}">
+                  {{ $hasStarted ? 'IN PROGRESS' : ($isAnnouncement ? 'NEW' : 'PENDING') }}
+                </span>
               </div>
             </div>
 
             @if($isAssigned)
               <div class="px-5 pb-4">
-                <button @click="setFocus({{ $task->id }})"
-                        class="w-full py-3.5 rounded-2xl font-bold text-base transition-all duration-200
-                          text-white active:scale-[0.98] shadow-lg" style="background-color:#1877F2; box-shadow: 0 10px 15px -3px rgba(24,119,242,0.3)">
-                  📸 Update
-                </button>
+                @if($isAnnouncement)
+                  {{-- Announcement: Show description and Acknowledge button --}}
+                  <form method="POST" action="{{ route('checklist.submit', $task) }}">
+                    @csrf
+                    <button type="submit"
+                            class="w-full py-3.5 rounded-2xl font-bold text-base transition-all duration-200
+                              text-white active:scale-[0.98] shadow-lg bg-amber-500"
+                            style="box-shadow: 0 10px 15px -3px rgba(245,158,11,0.3)">
+                      ✅ Acknowledge
+                    </button>
+                  </form>
+                @else
+                  {{-- Regular task: View button opens conversation --}}
+                  <button @click="setFocus({{ $task->id }})"
+                          class="w-full py-3.5 rounded-2xl font-bold text-base transition-all duration-200
+                            text-white active:scale-[0.98] shadow-lg" style="background-color:#1877F2; box-shadow: 0 10px 15px -3px rgba(24,119,242,0.3)">
+                    👁 View
+                  </button>
+                @endif
               </div>
             @endif
           </div>
@@ -147,10 +176,11 @@
             <div x-show="showCompleted" x-collapse class="space-y-3 mt-3" id="completed-tasks-container">
               @foreach($doneTasks as $task)
                 @php
-                  $sub        = $submissionsByTask->get($task->id);
-                  $isMine     = $sub && $sub->user_id === Auth::id();
+                  $sub        = $userSubmissionsByTask->get($task->id);
+                  $isMine     = $sub && $sub->user_id === $userId;
                   $subFiles   = $sub ? $sub->files : collect();
                   $imageFiles = $subFiles->filter(fn($f) => $f->isImage());
+                  $isAnnouncement = $task->type === 'announcement';
                 @endphp
 
                 <div x-data="{ expanded: false }"
@@ -159,7 +189,11 @@
                     <div class="flex items-center justify-between gap-3">
                       <div class="flex items-center gap-2.5 flex-1 min-w-0">
                         <div class="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
-                          <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                          @if($isAnnouncement)
+                            <span class="text-xs">📢</span>
+                          @else
+                            <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                          @endif
                         </div>
                         <div class="flex-1 min-w-0">
                           <h2 class="text-sm font-bold text-green-800 leading-tight truncate">{{ $task->title }}</h2>
@@ -169,7 +203,9 @@
                         </div>
                       </div>
                       <div class="flex items-center gap-2 flex-shrink-0">
-                        <span class="text-xs font-bold text-green-600 bg-green-100 px-2.5 py-0.5 rounded-full" data-poll-status="completed">DONE</span>
+                        <span class="text-xs font-bold text-green-600 bg-green-100 px-2.5 py-0.5 rounded-full" data-poll-status="completed">
+                          {{ $isAnnouncement ? 'NOTED' : 'DONE' }}
+                        </span>
                         <svg class="w-4 h-4 text-green-500 transition-transform duration-200" :class="expanded ? 'rotate-180' : ''"
                              fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                       </div>
@@ -178,37 +214,43 @@
 
                   <div x-show="expanded" x-collapse>
                     <div class="px-5 pb-4 space-y-2 border-t border-green-200 pt-3">
-                      @if($imageFiles->count() > 0)
-                        <div class="overflow-x-auto -mx-5 px-5 pb-1" style="-webkit-overflow-scrolling: touch;">
-                          <div class="flex gap-2" style="min-width: min-content;">
-                            @foreach($imageFiles as $f)
-                              <img src="{{ Storage::url($f->file_path) }}"
-                                   data-lightbox-src="{{ Storage::url($f->file_path) }}"
-                                   data-lightbox-sender="{{ $sub->user->name ?? 'User' }}"
-                                   data-lightbox-time="{{ $f->created_at->format('M d, Y \u00b7 g:i A') }}"
-                                   @click="$dispatch('open-lightbox', '{{ Storage::url($f->file_path) }}')"
-                                   class="w-20 h-20 flex-shrink-0 object-cover rounded-2xl border border-green-200 shadow-sm cursor-zoom-in active:scale-95 transition-transform">
-                            @endforeach
-                          </div>
-                        </div>
-                      @endif
-                      @if($sub->notes)
+                      @if($isAnnouncement)
                         <div class="bg-white/60 rounded-xl px-3 py-2">
-                          <p class="text-sm text-gray-600 leading-relaxed">{{ $sub->notes }}</p>
+                          <p class="text-xs text-gray-500">Acknowledged {{ $sub->created_at->format('g:i A') }}</p>
                         </div>
-                      @endif
-                      <div class="flex items-center gap-2 text-xs text-gray-400">
-                        <div class="w-5 h-5 rounded-full bg-green-200 flex items-center justify-center text-xs font-bold text-green-700 flex-shrink-0">
-                          {{ strtoupper(substr($sub->user->name ?? '?', 0, 1)) }}
+                      @else
+                        @if($imageFiles->count() > 0)
+                          <div class="overflow-x-auto -mx-5 px-5 pb-1" style="-webkit-overflow-scrolling: touch;">
+                            <div class="flex gap-2" style="min-width: min-content;">
+                              @foreach($imageFiles as $f)
+                                <img src="{{ Storage::url($f->file_path) }}"
+                                     data-lightbox-src="{{ Storage::url($f->file_path) }}"
+                                     data-lightbox-sender="{{ $sub->user->name ?? 'User' }}"
+                                     data-lightbox-time="{{ $f->created_at->format('M d, Y \u00b7 g:i A') }}"
+                                     @click="$dispatch('open-lightbox', '{{ Storage::url($f->file_path) }}')"
+                                     class="w-20 h-20 flex-shrink-0 object-cover rounded-2xl border border-green-200 shadow-sm cursor-zoom-in active:scale-95 transition-transform">
+                              @endforeach
+                            </div>
+                          </div>
+                        @endif
+                        @if($sub && $sub->notes)
+                          <div class="bg-white/60 rounded-xl px-3 py-2">
+                            <p class="text-sm text-gray-600 leading-relaxed">{{ $sub->notes }}</p>
+                          </div>
+                        @endif
+                        <div class="flex items-center gap-2 text-xs text-gray-400">
+                          <div class="w-5 h-5 rounded-full bg-green-200 flex items-center justify-center text-xs font-bold text-green-700 flex-shrink-0">
+                            {{ strtoupper(substr($sub->user->name ?? '?', 0, 1)) }}
+                          </div>
+                          <span>{{ $sub->user->name ?? 'Unknown' }} · {{ $sub->created_at->format('g:i A') }}</span>
                         </div>
-                        <span>{{ $sub->user->name ?? 'Unknown' }} · {{ $sub->created_at->format('g:i A') }}</span>
-                      </div>
-                      @if($isMine || $isAdmin)
-                        <button @click.stop="focusTask = {{ $task->id }}; document.body.style.overflow = 'hidden';"
-                                class="w-full py-2.5 rounded-2xl font-semibold text-sm transition-all duration-200
-                                  bg-white border-2 border-green-300 text-green-700 active:bg-green-50 active:scale-[0.98] mt-1">
-                          📸 Add More Photos
-                        </button>
+                        @if($isMine || $isAdmin)
+                          <button @click.stop="focusTask = {{ $task->id }}; document.body.style.overflow = 'hidden';"
+                                  class="w-full py-2.5 rounded-2xl font-semibold text-sm transition-all duration-200
+                                    bg-white border-2 border-green-300 text-green-700 active:bg-green-50 active:scale-[0.98] mt-1">
+                            👁 View Conversation
+                          </button>
+                        @endif
                       @endif
                     </div>
                   </div>
@@ -228,21 +270,25 @@
       @endif
     </div>
 
-    {{-- ===== FULL-SCREEN MESSENGER-STYLE FOCUS MODE (per task) ===== --}}
+    {{-- ===== FULL-SCREEN CONVERSATION MODE (per task) ===== --}}
     @foreach($tasks as $task)
       @php
-        $sub         = $submissionsByTask->get($task->id);
+        if ($task->type === 'announcement') continue; // Announcements don't have conversation mode
+
+        $sub         = $userSubmissionsByTask->get($task->id);
         $done        = $sub !== null && $sub->status === 'completed';
-        $reverted    = $sub !== null && $sub->status === 'pending';
-        $isMine      = $sub && $sub->user_id === Auth::id();
+        $reverted    = $sub !== null && $sub->status === 'pending' && $sub->started_at;
+        $hasStarted  = $sub && $sub->started_at;
+        $isMine      = $sub && $sub->user_id === $userId;
         $assignedIds = $task->assignedUsers->pluck('id')->toArray();
-        $isAssigned  = empty($assignedIds) || in_array(Auth::id(), $assignedIds);
-        $canSubmit   = (!$done && $isAssigned) || $reverted;
-        $subFiles    = ($done || $reverted) ? $sub->files : collect();
+        $isAssigned  = empty($assignedIds) || in_array($userId, $assignedIds);
+        $canInteract = $isAssigned || $isAdmin;
+        $subFiles    = $sub ? $sub->files : collect();
         $imageFiles  = $subFiles->filter(fn($f) => $f->isImage());
+        $videoFiles  = $subFiles->filter(fn($f) => $f->isVideo());
       @endphp
 
-      @if($canSubmit || ($done && ($isMine || $isAdmin)))
+      @if($canInteract)
         <div x-show="focusTask === {{ $task->id }}"
              x-transition.opacity.duration.200ms
              class="fixed inset-0 z-50 flex flex-col bg-white"
@@ -251,10 +297,13 @@
                uploading: false,
                sendingNote: false,
                noteText: '',
+               taskStarted: {{ $hasStarted ? 'true' : 'false' }},
+               startedAt: '{{ $hasStarted ? $sub->started_at->format('g:i A') : '' }}',
+               startedBy: '{{ $hasStarted ? ($sub->user->name ?? Auth::user()->name) : '' }}',
                sentPhotos: [
-                 @if($done || $reverted)
-                   @foreach($imageFiles as $f)
-                     { url: '{{ Storage::url($f->file_path) }}', name: '{{ $f->file_original_name }}', time: '{{ $f->created_at->format('g:i A') }}', ts: {{ $f->created_at->timestamp }}, by: '{{ $sub->user->name ?? 'Unknown' }}' },
+                 @if($sub)
+                   @foreach($subFiles as $f)
+                     { url: '{{ Storage::url($f->file_path) }}', name: '{{ $f->file_original_name }}', time: '{{ $f->created_at->format('g:i A') }}', ts: {{ $f->created_at->timestamp }}, by: '{{ $sub->user->name ?? 'Unknown' }}', isVideo: {{ $f->isVideo() ? 'true' : 'false' }} },
                    @endforeach
                  @endif
                ],
@@ -274,8 +323,14 @@
                  @endforeach
                ],
                get chatMessages() {
-                 // Group photos into batches (within 120 seconds = same batch)
                  let messages = [];
+
+                 // Add start event
+                 if (this.taskStarted && this.startedAt) {
+                   messages.push({ type: 'event', text: this.startedBy + ' started this task', time: this.startedAt, ts: 0 });
+                 }
+
+                 // Group photos into batches (within 120 seconds = same batch)
                  let currentBatch = null;
                  for (const photo of this.sentPhotos) {
                    if (!currentBatch || Math.abs(photo.ts - currentBatch.ts) > 120) {
@@ -293,12 +348,33 @@
                  for (const comment of this.adminComments) {
                    messages.push({ type: 'admin_comment', text: comment.text, time: comment.time, ts: comment.ts, by: comment.by, initial: comment.initial });
                  }
-                 // Sort all by timestamp
+                 // Sort all by timestamp (skip events with ts=0, they stay at top)
                  messages.sort((a, b) => a.ts - b.ts);
                  return messages;
                },
+               async startThisTask() {
+                 try {
+                   const fd = new FormData();
+                   fd.append('_token', document.querySelector('meta[name=csrf-token]').content);
+                   const res = await fetch('{{ route('checklist.start-task', $task) }}', {
+                     method: 'POST',
+                     body: fd,
+                     headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                   });
+                   const data = await res.json();
+                   if (data.success) {
+                     this.taskStarted = true;
+                     this.startedAt = data.started_at;
+                     this.startedBy = data.user;
+                   } else {
+                     alert(data.error || 'Failed to start task');
+                   }
+                 } catch(e) {
+                   alert('Failed to start. Check your connection.');
+                 }
+               },
                async autoUpload(fileList) {
-                 const files = [...fileList].filter(f => f.type.startsWith('image/'));
+                 const files = [...fileList].filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
                  if (files.length === 0) return;
                  for (const file of files) {
                    this.uploading = true;
@@ -313,7 +389,14 @@
                      });
                      const data = await res.json();
                      if (data.success) {
-                       this.sentPhotos.push({ url: data.url, name: data.name, time: data.uploaded_at, ts: Math.floor(Date.now()/1000), by: data.uploaded_by });
+                       const isVid = file.type.startsWith('video/');
+                       this.sentPhotos.push({ url: data.url, name: data.name, time: data.uploaded_at, ts: Math.floor(Date.now()/1000), by: data.uploaded_by, isVideo: isVid });
+                       // Auto-start task if not started yet
+                       if (!this.taskStarted) {
+                         this.taskStarted = true;
+                         this.startedAt = data.uploaded_at;
+                         this.startedBy = data.uploaded_by;
+                       }
                        this.$nextTick(() => {
                          const chatArea = this.$refs.chatArea{{ $task->id }};
                          if (chatArea) chatArea.scrollTop = chatArea.scrollHeight;
@@ -343,6 +426,12 @@
                    if (data.success) {
                      this.sentNotes.push({ text: data.notes, time: data.sent_at, ts: Math.floor(Date.now()/1000), by: data.sent_by });
                      this.noteText = '';
+                     // Auto-start task if not started yet
+                     if (!this.taskStarted) {
+                       this.taskStarted = true;
+                       this.startedAt = data.sent_at;
+                       this.startedBy = data.sent_by;
+                     }
                      this.$nextTick(() => {
                        const chatArea = this.$refs.chatArea{{ $task->id }};
                        if (chatArea) chatArea.scrollTop = chatArea.scrollHeight;
@@ -370,15 +459,16 @@
                   @if($task->task_time)
                     <span class="text-white/70 text-xs">🕐 {{ \Carbon\Carbon::parse($task->task_time)->format('g:i A') }}</span>
                   @endif
-                  <span class="text-xs font-semibold" :class="sentPhotos.length > 0 ? 'text-green-300' : 'text-white/70'"
-                        x-text="sentPhotos.length > 0 ? '✅ ' + sentPhotos.length + ' photo' + (sentPhotos.length > 1 ? 's' : '') + ' sent' : '⏳ Pending'">
+                  <span class="text-xs font-semibold"
+                        :class="sentPhotos.length > 0 ? 'text-green-300' : (taskStarted ? 'text-yellow-300' : 'text-white/70')"
+                        x-text="sentPhotos.length > 0 ? '✅ ' + sentPhotos.length + ' file' + (sentPhotos.length > 1 ? 's' : '') + ' sent' : (taskStarted ? '🔄 In Progress' : '⏳ Not Started')">
                   </span>
                 </div>
               </div>
             </div>
           </div>
 
-          {{-- ===== PINNED REFERENCE FILES (fixed between header and chat) ===== --}}
+          {{-- ===== PINNED REFERENCE FILES ===== --}}
           @php $refFiles = $task->referenceFiles ?? collect(); @endphp
           @if($task->reference_image || $refFiles->count())
             <div x-data="{ pinExpanded: false }" class="flex-shrink-0 border-b border-gray-200 bg-white">
@@ -430,12 +520,15 @@
           <div class="flex-1 overflow-y-auto bg-gray-50" x-ref="chatArea{{ $task->id }}">
             <div class="max-w-lg mx-auto px-4 py-4 space-y-4">
 
-              {{-- Task instruction bubble (received message, left side) --}}
+              {{-- Task instruction bubble (left side) --}}
               <div class="flex items-start gap-2">
                 <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white text-sm font-bold" style="background-color:#1877F2">📋</div>
                 <div>
                   <div class="bg-gray-200 rounded-2xl rounded-tl-md px-4 py-2.5">
                     <p class="text-sm text-gray-800 font-medium">{{ $task->title }}</p>
+                    @if($task->description)
+                      <p class="text-xs text-gray-500 mt-1">{{ $task->description }}</p>
+                    @endif
                     @if(in_array($task->type, ['photo', 'photo_note', 'both']))
                       <p class="text-xs text-gray-500 mt-1">📸 Please send photo proof</p>
                     @endif
@@ -447,9 +540,29 @@
                 </div>
               </div>
 
-              {{-- Interleaved chat messages (photos batched, notes, admin comments) --}}
+              {{-- START BUTTON (shown when task not yet started) --}}
+              <template x-if="!taskStarted">
+                <div class="flex justify-center py-4">
+                  <button @click="startThisTask()"
+                          class="px-8 py-3 rounded-2xl font-bold text-base text-white transition-all duration-200 active:scale-[0.98] shadow-lg"
+                          style="background-color:#22c55e; box-shadow: 0 10px 15px -3px rgba(34,197,94,0.3)">
+                    ▶ Start Task
+                  </button>
+                </div>
+              </template>
+
+              {{-- Interleaved chat messages --}}
               <template x-for="(msg, mi) in chatMessages" :key="'msg'+mi">
                 <div>
+                  {{-- Event (start, etc) --}}
+                  <template x-if="msg.type === 'event'">
+                    <div class="flex justify-center">
+                      <div class="bg-gray-200 rounded-full px-4 py-1.5 text-xs text-gray-500 font-medium">
+                        <span x-text="msg.text"></span> · <span x-text="msg.time"></span>
+                      </div>
+                    </div>
+                  </template>
+
                   {{-- Photo batch (right side, user sent) --}}
                   <template x-if="msg.type === 'photo_batch'">
                     <div class="flex justify-end">
@@ -457,11 +570,10 @@
                         <div class="flex flex-wrap gap-1.5 justify-end">
                           <template x-for="(photo, pi) in msg.photos" :key="'p'+mi+'_'+pi">
                             <div class="inline-block">
-                              <video x-show="photo.url && (photo.url.endsWith('.mp4') || photo.url.endsWith('.mov') || photo.url.endsWith('.webm') || photo.url.endsWith('.avi') || photo.url.endsWith('.3gp'))" :src="photo.url" controls playsinline
-                                     class="w-40 h-28 object-cover rounded-2xl shadow-sm"
-                                     :class="pi === 0 && msg.photos.length === 1 ? 'rounded-tr-md' : ''">
+                              <video x-show="photo.isVideo" :src="photo.url" controls playsinline
+                                     class="w-40 h-28 object-cover rounded-2xl shadow-sm">
                               </video>
-                              <img x-show="!(photo.url && (photo.url.endsWith('.mp4') || photo.url.endsWith('.mov') || photo.url.endsWith('.webm') || photo.url.endsWith('.avi') || photo.url.endsWith('.3gp')))"
+                              <img x-show="!photo.isVideo"
                                    :src="photo.url"
                                    :data-lightbox-src="photo.url"
                                    :data-lightbox-sender="msg.by"
@@ -529,7 +641,8 @@
           </div>
 
           {{-- ===== MESSENGER BOTTOM BAR ===== --}}
-          <div class="flex-shrink-0 border-t border-gray-200 bg-white" style="padding-bottom: env(safe-area-inset-bottom, 0px);">
+          <div class="flex-shrink-0 border-t border-gray-200 bg-white" style="padding-bottom: env(safe-area-inset-bottom, 0px);"
+               x-show="taskStarted">
             <div class="max-w-lg mx-auto px-3 py-2">
               <div class="flex items-end gap-2">
 
@@ -550,7 +663,7 @@
                     <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
                   </button>
 
-                  {{-- Hidden file inputs with auto-upload --}}
+                  {{-- Hidden file inputs --}}
                   <input type="file" x-ref="msgCam{{ $task->id }}" class="hidden"
                          accept="image/*,video/*" capture="environment"
                          @change="autoUpload($event.target.files); $event.target.value='';">
@@ -559,7 +672,7 @@
                          @change="autoUpload($event.target.files); $event.target.value='';">
                 @endif
 
-                {{-- Text input (Messenger Aa style) --}}
+                {{-- Text input --}}
                 @if(in_array($task->type, ['note', 'any', 'both', 'photo_note']))
                   <div class="flex-1 relative">
                     <input type="text" x-model="noteText"
@@ -571,7 +684,7 @@
                   <div class="flex-1"></div>
                 @endif
 
-                {{-- Send button (for notes) --}}
+                {{-- Send button --}}
                 <button type="button"
                         @click="sendNote()"
                         :disabled="sendingNote || !noteText.trim()"
@@ -592,6 +705,13 @@
               </div>
             </div>
           </div>
+
+          {{-- Not started message at bottom --}}
+          <template x-if="!taskStarted">
+            <div class="flex-shrink-0 border-t border-gray-200 bg-gray-50 px-4 py-4 text-center">
+              <p class="text-sm text-gray-400">Tap <strong>"Start Task"</strong> to begin</p>
+            </div>
+          </template>
 
         </div>
       @endif
@@ -740,7 +860,6 @@
       const POLL_INTERVAL = 5000;
       const POLL_URL = '{{ route("checklist.poll-status") }}';
 
-      // Track known statuses
       const knownStatuses = {};
       document.querySelectorAll('[data-poll-task]').forEach(card => {
           const tid = card.dataset.pollTask;
@@ -757,7 +876,6 @@
               if (!resp.ok) return;
               const data = await resp.json();
 
-              // Update progress counter
               const counterEl = document.querySelector('[data-poll-counter]');
               if (counterEl) {
                   counterEl.textContent = data.done_count + '/' + data.total;
@@ -771,7 +889,7 @@
               let needsMove = false;
 
               data.tasks.forEach(t => {
-                  const card = document.querySelector('[data-poll-task="' + t.task_id + '"');
+                  const card = document.querySelector('[data-poll-task="' + t.task_id + '"]');
                   if (!card) return;
 
                   const oldStatus = knownStatuses[t.task_id] || 'pending';
@@ -784,16 +902,13 @@
 
                   const badge = card.querySelector('[data-poll-status]');
 
-                  // CASE 1: Task was completed, now reverted → move to pending
-                  if (oldStatus === 'completed' && (newStatus === 'pending' || newStatus === 'reverted')) {
-                      // Restyle card as pending
+                  if (oldStatus === 'completed' && (newStatus === 'pending' || newStatus === 'reverted' || newStatus === 'not_started')) {
                       card.className = 'rounded-3xl shadow-sm overflow-hidden bg-white border-2 border-blue-300';
                       if (badge) {
                           badge.dataset.pollStatus = 'pending';
                           badge.className = 'text-xs font-bold text-blue-700 bg-blue-100 px-3 py-1 rounded-full flex-shrink-0';
                           badge.textContent = 'PENDING';
                       }
-                      // Move card to pending container
                       if (pendingContainer) {
                           card.style.transition = 'background-color 0.5s';
                           card.style.backgroundColor = '#FFF7ED';
@@ -801,34 +916,29 @@
                           setTimeout(() => { card.style.backgroundColor = ''; }, 2000);
                       }
                   }
-                  // CASE 2: Task was pending, now completed → move to completed
-                  else if ((oldStatus === 'pending' || oldStatus === 'reverted') && newStatus === 'completed') {
-                      // Restyle card as completed
+                  else if ((oldStatus === 'pending' || oldStatus === 'reverted' || oldStatus === 'not_started' || oldStatus === 'in_progress') && newStatus === 'completed') {
                       card.className = 'rounded-3xl shadow-sm overflow-hidden bg-green-50 border-2 border-green-200';
                       if (badge) {
                           badge.dataset.pollStatus = 'completed';
                           badge.className = 'text-xs font-bold text-green-600 bg-green-100 px-2.5 py-0.5 rounded-full';
                           badge.textContent = 'DONE';
                       }
-                      // Move card to completed container (create if needed)
                       if (completedContainer) {
                           completedContainer.appendChild(card);
                       }
-                      // Show completed section if it was hidden
                       if (completedWrapper) {
                           completedWrapper.style.display = '';
                       }
                   }
-                  // CASE 3: Other status changes (just update badge)
                   else {
                       if (badge) {
                           badge.dataset.pollStatus = newStatus;
                           if (newStatus === 'completed') {
                               badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700';
                               badge.textContent = 'DONE';
-                          } else if (newStatus === 'reverted') {
-                              badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700';
-                              badge.textContent = 'REVERTED';
+                          } else if (newStatus === 'in_progress') {
+                              badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700';
+                              badge.textContent = 'IN PROGRESS';
                           } else {
                               badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700';
                               badge.textContent = 'PENDING';
@@ -837,32 +947,15 @@
                   }
               });
 
-              // Update completed count label
               if (needsMove && completedContainer && completedCountEl) {
                   const completedCount = completedContainer.children.length;
                   completedCountEl.textContent = 'Completed (' + completedCount + ')';
               }
-
-              // Update comment counts
-              data.tasks.forEach(t => {
-                  const card = document.querySelector('[data-poll-task="' + t.task_id + '"');
-                  if (!card) return;
-                  const commentBadge = card.querySelector('[data-poll-comments]');
-                  if (commentBadge) {
-                      if (t.comment_count > 0) {
-                          commentBadge.textContent = t.comment_count + ' comment' + (t.comment_count > 1 ? 's' : '');
-                          commentBadge.style.display = '';
-                      } else {
-                          commentBadge.style.display = 'none';
-                      }
-                  }
-              });
           } catch (e) {
-              // Silent fail — will retry next interval
+              // Silent fail
           }
       }
 
-      // Start polling
       setInterval(poll, POLL_INTERVAL);
   })();
   </script>

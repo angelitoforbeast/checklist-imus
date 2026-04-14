@@ -36,7 +36,12 @@
     @endphp
 
     {{-- ====== ADD TASK FORM (Slide-down) ====== --}}
-    <div x-data="{ showForm: {{ $errors->any() ? 'true' : 'false' }} }"
+    <div x-data="{
+           showForm: {{ $errors->any() ? 'true' : 'false' }},
+           taskType: '{{ old('type', 'photo_note') }}',
+           freq: '{{ old('frequency', 'daily') }}',
+           subMode: '{{ old('submission_mode', 'group') }}'
+         }"
          @toggle-add-form.window="showForm = !showForm"
          x-show="showForm" x-transition:enter="transition ease-out duration-200"
          x-transition:enter-start="opacity-0 -translate-y-2" x-transition:enter-end="opacity-100 translate-y-0"
@@ -69,36 +74,117 @@
                  class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
         </div>
 
-        {{-- Type + Frequency row --}}
+        {{-- Type + Submission Mode row --}}
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="text-xs font-medium text-gray-600 mb-1 block">Submission Type</label>
-            <select name="type" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
-              <option value="photo_note" {{ old('type') === 'photo_note' ? 'selected' : '' }}>📸 Photo + Note</option>
-              <option value="any" {{ old('type') === 'any' ? 'selected' : '' }}>📎 Any</option>
-              <option value="photo" {{ old('type') === 'photo' ? 'selected' : '' }}>📸 Photo only</option>
-              <option value="note" {{ old('type') === 'note' ? 'selected' : '' }}>📝 Note only</option>
-              <option value="both" {{ old('type') === 'both' ? 'selected' : '' }}>📸📝 Both required</option>
+            <label class="text-xs font-medium text-gray-600 mb-1 block">Task Type</label>
+            <select name="type" x-model="taskType" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+              <option value="photo_note">📸 Photo + Note</option>
+              <option value="any">📎 Any</option>
+              <option value="photo">📸 Photo only</option>
+              <option value="note">📝 Note only</option>
+              <option value="both">📸📝 Both required</option>
+              <option value="announcement">📢 Announcement</option>
             </select>
           </div>
           <div>
-            <label class="text-xs font-medium text-gray-600 mb-1 block">Frequency</label>
-            <select name="frequency" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
-              <option value="daily" {{ old('frequency') === 'daily' ? 'selected' : '' }}>🔄 Daily</option>
-              <option value="once" {{ old('frequency') === 'once' ? 'selected' : '' }}>1️⃣ Once</option>
+            <label class="text-xs font-medium text-gray-600 mb-1 block">Submission Mode</label>
+            <select name="submission_mode" x-model="subMode" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                    :disabled="taskType === 'announcement'" :class="taskType === 'announcement' && 'bg-gray-100 text-gray-400'">
+              <option value="group">👥 Group</option>
+              <option value="individual">👤 Individual</option>
             </select>
+            <p class="text-[10px] text-gray-400 mt-0.5" x-show="taskType === 'announcement'">Announcements are always individual</p>
           </div>
         </div>
 
-        {{-- Scheduled Time --}}
-        <div>
-          <label class="text-xs font-medium text-gray-600 mb-1 block">Scheduled Time <span class="text-gray-400 font-normal">(optional)</span></label>
-          <input type="time" name="task_time" value="{{ old('task_time') }}"
-                 class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+        {{-- Frequency + Schedule --}}
+        <div class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs font-medium text-gray-600 mb-1 block">Frequency</label>
+              <select name="frequency" x-model="freq" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+                <option value="daily">🔄 Daily</option>
+                <option value="once">1️⃣ Once</option>
+                <option value="weekly">📅 Weekly</option>
+                <option value="monthly">🗓️ Monthly</option>
+                <option value="custom">📌 Custom Dates</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-600 mb-1 block">Scheduled Time <span class="text-gray-400 font-normal">(opt.)</span></label>
+              <input type="time" name="task_time" value="{{ old('task_time') }}"
+                     class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+            </div>
+          </div>
+
+          {{-- Weekly: day checkboxes --}}
+          <div x-show="freq === 'weekly'" x-transition class="bg-gray-50 rounded-xl p-3">
+            <label class="text-xs font-medium text-gray-600 mb-2 block">Days of Week</label>
+            <div class="flex flex-wrap gap-2">
+              @foreach(['1' => 'Mon', '2' => 'Tue', '3' => 'Wed', '4' => 'Thu', '5' => 'Fri', '6' => 'Sat', '0' => 'Sun'] as $val => $day)
+                <label class="flex items-center gap-1 px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-blue-50 text-xs has-[:checked]:bg-blue-100 has-[:checked]:border-blue-300 has-[:checked]:text-blue-700 transition">
+                  <input type="checkbox" name="schedule_days[]" value="{{ $val }}" class="accent-blue-600 w-3 h-3"
+                         {{ is_array(old('schedule_days')) && in_array($val, old('schedule_days')) ? 'checked' : '' }}>
+                  {{ $day }}
+                </label>
+              @endforeach
+            </div>
+          </div>
+
+          {{-- Monthly: day of month --}}
+          <div x-show="freq === 'monthly'" x-transition class="bg-gray-50 rounded-xl p-3">
+            <label class="text-xs font-medium text-gray-600 mb-2 block">Days of Month</label>
+            <div class="flex flex-wrap gap-1.5">
+              @for($d = 1; $d <= 31; $d++)
+                <label class="w-8 h-8 flex items-center justify-center bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-blue-50 text-xs has-[:checked]:bg-blue-100 has-[:checked]:border-blue-300 has-[:checked]:text-blue-700 transition">
+                  <input type="checkbox" name="schedule_days[]" value="{{ $d }}" class="hidden"
+                         {{ is_array(old('schedule_days')) && in_array((string)$d, old('schedule_days')) ? 'checked' : '' }}>
+                  {{ $d }}
+                </label>
+              @endfor
+            </div>
+          </div>
+
+          {{-- Custom: date picker --}}
+          <div x-show="freq === 'custom'" x-transition class="bg-gray-50 rounded-xl p-3" x-data="{ dates: {{ json_encode(old('schedule_dates', [])) }} }">
+            <label class="text-xs font-medium text-gray-600 mb-2 block">Specific Dates</label>
+            <div class="flex gap-2 mb-2">
+              <input type="date" x-ref="newDate" class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+              <button type="button" @click="if($refs.newDate.value && !dates.includes($refs.newDate.value)) { dates.push($refs.newDate.value); $refs.newDate.value=''; }"
+                      class="px-3 py-2 bg-blue-600 text-white text-sm rounded-xl hover:bg-blue-700 active:scale-95 transition">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <template x-for="(dt, i) in dates" :key="i">
+                <span class="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs">
+                  <span x-text="dt"></span>
+                  <button type="button" @click="dates.splice(i, 1)" class="text-blue-400 hover:text-blue-600">&times;</button>
+                  <input type="hidden" name="schedule_dates[]" :value="dt">
+                </span>
+              </template>
+            </div>
+            <p class="text-[10px] text-gray-400 mt-1" x-show="dates.length === 0">No dates selected</p>
+          </div>
+
+          {{-- Start / End date --}}
+          <div class="grid grid-cols-2 gap-3" x-show="freq !== 'once' && freq !== 'custom'" x-transition>
+            <div>
+              <label class="text-xs font-medium text-gray-600 mb-1 block">Start Date <span class="text-gray-400 font-normal">(opt.)</span></label>
+              <input type="date" name="start_date" value="{{ old('start_date') }}"
+                     class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-600 mb-1 block">End Date <span class="text-gray-400 font-normal">(opt.)</span></label>
+              <input type="date" name="end_date" value="{{ old('end_date') }}"
+                     class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+            </div>
+          </div>
         </div>
 
         {{-- AI Prompt --}}
-        <div x-data="{ show: false }">
+        <div x-data="{ show: false }" x-show="taskType !== 'announcement'">
           <button type="button" @click="show = !show" class="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1 mb-1">
             <i class="fa-solid fa-robot"></i> AI Prompt Focus
             <svg class="w-3 h-3 transition-transform" :class="show && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -108,7 +194,7 @@
         </div>
 
         {{-- Approval Criteria --}}
-        <div x-data="{ show: false }">
+        <div x-data="{ show: false }" x-show="taskType !== 'announcement'">
           <button type="button" @click="show = !show" class="text-xs text-emerald-600 hover:text-emerald-800 flex items-center gap-1 mb-1">
             <i class="fa-solid fa-clipboard-check"></i> Approval Criteria
             <svg class="w-3 h-3 transition-transform" :class="show && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -166,7 +252,7 @@
         </div>
 
         {{-- Reference Files (multiple images/videos) --}}
-        <div x-data="{ previews: [] }">
+        <div x-data="{ previews: [] }" x-show="taskType !== 'announcement'">
           <label class="text-xs font-medium text-gray-600 mb-1 block">Reference Photos/Videos <span class="text-gray-400 font-normal">(optional, multiple)</span></label>
           <label class="cursor-pointer px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm text-gray-600 transition inline-flex items-center gap-1.5 active:scale-95">
             <i class="fa-solid fa-photo-film"></i> Choose Files
@@ -201,7 +287,14 @@
       @forelse($allTasks as $t)
         @php $assignedIds = $t->assignedUsers->pluck('id')->toArray(); @endphp
 
-        <div x-data="{ editing: false, expanded: false }"
+        <div x-data="{
+               editing: false,
+               expanded: false,
+               editFreq: '{{ $t->frequency ?? 'daily' }}',
+               editType: '{{ $t->type }}',
+               editSubMode: '{{ $t->submission_mode ?? 'group' }}',
+               editDates: {{ json_encode($t->schedule_dates ?? []) }}
+             }"
              data-id="{{ $t->id }}"
              class="task-row bg-white border {{ $t->is_active ? 'border-gray-200' : 'border-gray-100 opacity-60' }} rounded-2xl shadow-sm overflow-hidden transition-all">
 
@@ -220,13 +313,30 @@
                   <span class="text-sm font-semibold text-gray-800 truncate">{{ $t->title }}</span>
                 </div>
                 <div class="flex items-center flex-wrap gap-1.5 mt-1">
-                  <span class="text-[10px] px-2 py-0.5 rounded-full font-medium
-                    {{ $t->type === 'photo' ? 'bg-blue-100 text-blue-700' : ($t->type === 'note' ? 'bg-yellow-100 text-yellow-700' : ($t->type === 'photo_note' ? 'bg-indigo-100 text-indigo-700' : ($t->type === 'both' ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-600'))) }}">
-                    {{ $t->type === 'photo' ? '📸 Photo' : ($t->type === 'note' ? '📝 Note' : ($t->type === 'photo_note' ? '📸 Photo+Note' : ($t->type === 'both' ? '📸📝 Both' : '📎 Any'))) }}
-                  </span>
-                  <span class="text-[10px] px-2 py-0.5 rounded-full font-medium {{ ($t->frequency ?? 'daily') === 'daily' ? 'bg-cyan-100 text-cyan-700' : 'bg-amber-100 text-amber-700' }}">
-                    {{ ($t->frequency ?? 'daily') === 'daily' ? '🔄 Daily' : '1️⃣ Once' }}
-                  </span>
+                  {{-- Type badge --}}
+                  @php
+                    $typeBadge = match($t->type) {
+                      'photo' => ['bg-blue-100 text-blue-700', '📸 Photo'],
+                      'note' => ['bg-yellow-100 text-yellow-700', '📝 Note'],
+                      'photo_note' => ['bg-indigo-100 text-indigo-700', '📸 Photo+Note'],
+                      'both' => ['bg-pink-100 text-pink-700', '📸📝 Both'],
+                      'announcement' => ['bg-orange-100 text-orange-700', '📢 Announcement'],
+                      default => ['bg-gray-100 text-gray-600', '📎 Any'],
+                    };
+                    $freqBadge = match($t->frequency ?? 'daily') {
+                      'daily' => ['bg-cyan-100 text-cyan-700', '🔄 Daily'],
+                      'once' => ['bg-amber-100 text-amber-700', '1️⃣ Once'],
+                      'weekly' => ['bg-violet-100 text-violet-700', '📅 Weekly'],
+                      'monthly' => ['bg-teal-100 text-teal-700', '🗓️ Monthly'],
+                      'custom' => ['bg-rose-100 text-rose-700', '📌 Custom'],
+                      default => ['bg-cyan-100 text-cyan-700', '🔄 Daily'],
+                    };
+                  @endphp
+                  <span class="text-[10px] px-2 py-0.5 rounded-full font-medium {{ $typeBadge[0] }}">{{ $typeBadge[1] }}</span>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full font-medium {{ $freqBadge[0] }}">{{ $freqBadge[1] }}</span>
+                  @if(($t->submission_mode ?? 'group') === 'individual')
+                    <span class="text-[10px] px-2 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700">👤 Individual</span>
+                  @endif
                   @if($t->task_time)
                     <span class="text-[10px] px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">
                       🕐 {{ \Carbon\Carbon::parse($t->task_time)->format('g:i A') }}
@@ -254,30 +364,63 @@
             <div class="px-4 py-3 space-y-2 bg-gray-50/50" x-show="!editing">
               @if($t->description)
                 <div class="flex items-start gap-2">
-                  <span class="text-xs text-gray-400 w-20 flex-shrink-0">Description</span>
+                  <span class="text-xs text-gray-400 w-24 flex-shrink-0">Description</span>
                   <span class="text-xs text-gray-700">{{ $t->description }}</span>
                 </div>
               @endif
               <div class="flex items-start gap-2">
-                <span class="text-xs text-gray-400 w-20 flex-shrink-0">Assigned</span>
+                <span class="text-xs text-gray-400 w-24 flex-shrink-0">Assigned</span>
                 <span class="text-xs text-indigo-600">{{ $t->assignedUsers->count() ? $t->assignedUsers->pluck('name')->implode(', ') : 'Anyone' }}</span>
               </div>
+              <div class="flex items-start gap-2">
+                <span class="text-xs text-gray-400 w-24 flex-shrink-0">Mode</span>
+                <span class="text-xs text-gray-700">{{ ($t->submission_mode ?? 'group') === 'group' ? '👥 Group' : '👤 Individual' }}</span>
+              </div>
+              @if(($t->frequency ?? 'daily') === 'weekly' && $t->schedule_days)
+                <div class="flex items-start gap-2">
+                  <span class="text-xs text-gray-400 w-24 flex-shrink-0">Schedule</span>
+                  <span class="text-xs text-gray-700">
+                    @php
+                      $dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                      echo collect($t->schedule_days)->map(fn($d) => $dayNames[$d] ?? $d)->implode(', ');
+                    @endphp
+                  </span>
+                </div>
+              @endif
+              @if(($t->frequency ?? 'daily') === 'monthly' && $t->schedule_days)
+                <div class="flex items-start gap-2">
+                  <span class="text-xs text-gray-400 w-24 flex-shrink-0">Schedule</span>
+                  <span class="text-xs text-gray-700">Day {{ collect($t->schedule_days)->implode(', ') }} of month</span>
+                </div>
+              @endif
+              @if(($t->frequency ?? 'daily') === 'custom' && $t->schedule_dates)
+                <div class="flex items-start gap-2">
+                  <span class="text-xs text-gray-400 w-24 flex-shrink-0">Dates</span>
+                  <span class="text-xs text-gray-700">{{ collect($t->schedule_dates)->implode(', ') }}</span>
+                </div>
+              @endif
+              @if($t->start_date || $t->end_date)
+                <div class="flex items-start gap-2">
+                  <span class="text-xs text-gray-400 w-24 flex-shrink-0">Period</span>
+                  <span class="text-xs text-gray-700">{{ $t->start_date ?? '...' }} → {{ $t->end_date ?? '...' }}</span>
+                </div>
+              @endif
               @if($t->ai_prompt)
                 <div class="flex items-start gap-2">
-                  <span class="text-xs text-gray-400 w-20 flex-shrink-0">AI Prompt</span>
+                  <span class="text-xs text-gray-400 w-24 flex-shrink-0">AI Prompt</span>
                   <span class="text-xs text-purple-600 italic">{{ $t->ai_prompt }}</span>
                 </div>
               @endif
               @if($t->approval_prompt)
                 <div class="flex items-start gap-2">
-                  <span class="text-xs text-gray-400 w-20 flex-shrink-0">Approval</span>
+                  <span class="text-xs text-gray-400 w-24 flex-shrink-0">Approval</span>
                   <span class="text-xs text-emerald-600 italic">{{ $t->approval_prompt }}</span>
                 </div>
               @endif
               @php $refFiles = $t->referenceFiles; @endphp
               @if($t->reference_image || $refFiles->count())
                 <div class="flex items-start gap-2">
-                  <span class="text-xs text-gray-400 w-20 flex-shrink-0">Reference</span>
+                  <span class="text-xs text-gray-400 w-24 flex-shrink-0">Reference</span>
                   <div class="flex flex-wrap gap-2">
                     @if($t->reference_image && $refFiles->where('file_path', $t->reference_image)->isEmpty())
                       <img src="{{ Storage::url($t->reference_image) }}" class="w-16 h-16 object-cover rounded-xl border border-gray-200">
@@ -311,6 +454,7 @@
                   <input type="hidden" name="approval_prompt" value="{{ $t->approval_prompt }}">
                   <input type="hidden" name="task_time" value="{{ $t->task_time }}">
                   <input type="hidden" name="frequency" value="{{ $t->frequency ?? 'daily' }}">
+                  <input type="hidden" name="submission_mode" value="{{ $t->submission_mode ?? 'group' }}">
                   <input type="hidden" name="is_active" value="{{ $t->is_active ? '0' : '1' }}">
                   @foreach($assignedIds as $uid)
                     <input type="hidden" name="assigned_users[]" value="{{ $uid }}">
@@ -353,36 +497,113 @@
               <div class="grid grid-cols-2 gap-3">
                 <div>
                   <label class="text-xs font-medium text-gray-600 mb-1 block">Type</label>
-                  <select name="type" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
-                    <option value="photo_note" {{ $t->type === 'photo_note' ? 'selected' : '' }}>📸 Photo+Note</option>
-                    <option value="any" {{ $t->type === 'any' ? 'selected' : '' }}>📎 Any</option>
-                    <option value="photo" {{ $t->type === 'photo' ? 'selected' : '' }}>📸 Photo</option>
-                    <option value="note" {{ $t->type === 'note' ? 'selected' : '' }}>📝 Note</option>
-                    <option value="both" {{ $t->type === 'both' ? 'selected' : '' }}>📸📝 Both</option>
+                  <select name="type" x-model="editType" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+                    <option value="photo_note">📸 Photo+Note</option>
+                    <option value="any">📎 Any</option>
+                    <option value="photo">📸 Photo</option>
+                    <option value="note">📝 Note</option>
+                    <option value="both">📸📝 Both</option>
+                    <option value="announcement">📢 Announcement</option>
                   </select>
                 </div>
                 <div>
-                  <label class="text-xs font-medium text-gray-600 mb-1 block">Frequency</label>
-                  <select name="frequency" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
-                    <option value="daily" {{ ($t->frequency ?? 'daily') === 'daily' ? 'selected' : '' }}>🔄 Daily</option>
-                    <option value="once" {{ ($t->frequency ?? 'daily') === 'once' ? 'selected' : '' }}>1️⃣ Once</option>
+                  <label class="text-xs font-medium text-gray-600 mb-1 block">Submission Mode</label>
+                  <select name="submission_mode" x-model="editSubMode" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                          :disabled="editType === 'announcement'" :class="editType === 'announcement' && 'bg-gray-100 text-gray-400'">
+                    <option value="group">👥 Group</option>
+                    <option value="individual">👤 Individual</option>
                   </select>
                 </div>
               </div>
 
-              <div>
-                <label class="text-xs font-medium text-gray-600 mb-1 block">Scheduled Time</label>
-                <input type="time" name="task_time" value="{{ $t->task_time ? \Carbon\Carbon::parse($t->task_time)->format('H:i') : '' }}"
-                       class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="text-xs font-medium text-gray-600 mb-1 block">Frequency</label>
+                  <select name="frequency" x-model="editFreq" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+                    <option value="daily">🔄 Daily</option>
+                    <option value="once">1️⃣ Once</option>
+                    <option value="weekly">📅 Weekly</option>
+                    <option value="monthly">🗓️ Monthly</option>
+                    <option value="custom">📌 Custom</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-xs font-medium text-gray-600 mb-1 block">Scheduled Time</label>
+                  <input type="time" name="task_time" value="{{ $t->task_time ? \Carbon\Carbon::parse($t->task_time)->format('H:i') : '' }}"
+                         class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+                </div>
               </div>
 
-              <div>
+              {{-- Weekly days --}}
+              <div x-show="editFreq === 'weekly'" x-transition class="bg-gray-50 rounded-xl p-3">
+                <label class="text-xs font-medium text-gray-600 mb-2 block">Days of Week</label>
+                <div class="flex flex-wrap gap-2">
+                  @foreach(['1' => 'Mon', '2' => 'Tue', '3' => 'Wed', '4' => 'Thu', '5' => 'Fri', '6' => 'Sat', '0' => 'Sun'] as $val => $day)
+                    <label class="flex items-center gap-1 px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-blue-50 text-xs has-[:checked]:bg-blue-100 has-[:checked]:border-blue-300 has-[:checked]:text-blue-700 transition">
+                      <input type="checkbox" name="schedule_days[]" value="{{ $val }}" class="accent-blue-600 w-3 h-3"
+                             {{ is_array($t->schedule_days) && in_array((int)$val, $t->schedule_days) ? 'checked' : '' }}>
+                      {{ $day }}
+                    </label>
+                  @endforeach
+                </div>
+              </div>
+
+              {{-- Monthly days --}}
+              <div x-show="editFreq === 'monthly'" x-transition class="bg-gray-50 rounded-xl p-3">
+                <label class="text-xs font-medium text-gray-600 mb-2 block">Days of Month</label>
+                <div class="flex flex-wrap gap-1.5">
+                  @for($d = 1; $d <= 31; $d++)
+                    <label class="w-8 h-8 flex items-center justify-center bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-blue-50 text-xs has-[:checked]:bg-blue-100 has-[:checked]:border-blue-300 has-[:checked]:text-blue-700 transition">
+                      <input type="checkbox" name="schedule_days[]" value="{{ $d }}" class="hidden"
+                             {{ is_array($t->schedule_days) && in_array($d, $t->schedule_days) ? 'checked' : '' }}>
+                      {{ $d }}
+                    </label>
+                  @endfor
+                </div>
+              </div>
+
+              {{-- Custom dates --}}
+              <div x-show="editFreq === 'custom'" x-transition class="bg-gray-50 rounded-xl p-3">
+                <label class="text-xs font-medium text-gray-600 mb-2 block">Specific Dates</label>
+                <div class="flex gap-2 mb-2">
+                  <input type="date" x-ref="editNewDate{{ $t->id }}" class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  <button type="button" @click="let v = $refs['editNewDate{{ $t->id }}'].value; if(v && !editDates.includes(v)) { editDates.push(v); $refs['editNewDate{{ $t->id }}'].value=''; }"
+                          class="px-3 py-2 bg-blue-600 text-white text-sm rounded-xl hover:bg-blue-700 active:scale-95 transition">
+                    <i class="fa-solid fa-plus"></i>
+                  </button>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  <template x-for="(dt, i) in editDates" :key="i">
+                    <span class="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs">
+                      <span x-text="dt"></span>
+                      <button type="button" @click="editDates.splice(i, 1)" class="text-blue-400 hover:text-blue-600">&times;</button>
+                      <input type="hidden" name="schedule_dates[]" :value="dt">
+                    </span>
+                  </template>
+                </div>
+              </div>
+
+              {{-- Start / End date --}}
+              <div class="grid grid-cols-2 gap-3" x-show="editFreq !== 'once' && editFreq !== 'custom'" x-transition>
+                <div>
+                  <label class="text-xs font-medium text-gray-600 mb-1 block">Start Date</label>
+                  <input type="date" name="start_date" value="{{ $t->start_date }}"
+                         class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+                </div>
+                <div>
+                  <label class="text-xs font-medium text-gray-600 mb-1 block">End Date</label>
+                  <input type="date" name="end_date" value="{{ $t->end_date }}"
+                         class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+                </div>
+              </div>
+
+              <div x-show="editType !== 'announcement'">
                 <label class="text-xs font-medium text-gray-600 mb-1 block">AI Prompt Focus</label>
                 <textarea name="ai_prompt" rows="2" placeholder="e.g. Check if the workstation is clean..."
                           class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none">{{ $t->ai_prompt }}</textarea>
               </div>
 
-              <div>
+              <div x-show="editType !== 'announcement'">
                 <label class="text-xs font-medium text-gray-600 mb-1 block">Approval Criteria</label>
                 <textarea name="approval_prompt" rows="2" placeholder="e.g. The floor must be visibly clean..."
                           class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none">{{ $t->approval_prompt }}</textarea>
@@ -440,9 +661,8 @@
               </div>
 
               {{-- Reference Files --}}
-              <div x-data="{ newPreviews: [] }">
+              <div x-data="{ newPreviews: [] }" x-show="editType !== 'announcement'">
                 <label class="text-xs font-medium text-gray-600 mb-1 block">Reference Photos/Videos</label>
-                {{-- Existing reference files --}}
                 @if($t->referenceFiles->count())
                   <div class="flex flex-wrap gap-2 mb-2">
                     @foreach($t->referenceFiles as $rf)
@@ -464,7 +684,6 @@
                     @endforeach
                   </div>
                 @endif
-                {{-- Add new files --}}
                 <label class="cursor-pointer px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm text-gray-600 transition inline-flex items-center gap-1.5 active:scale-95">
                   <i class="fa-solid fa-photo-film"></i> Add Files
                   <input type="file" name="reference_files[]" accept="image/*,video/*" multiple class="hidden"
@@ -522,7 +741,6 @@
         if (handle) {
           handle.addEventListener('mousedown', () => row.setAttribute('draggable', 'true'));
           handle.addEventListener('mouseup', () => row.setAttribute('draggable', 'false'));
-          // Touch drag support
           handle.addEventListener('touchstart', () => row.setAttribute('draggable', 'true'));
           handle.addEventListener('touchend', () => row.setAttribute('draggable', 'false'));
         }
