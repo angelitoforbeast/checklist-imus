@@ -35,7 +35,107 @@
       $roles = \App\Models\Role::with('users')->where('name', '!=', 'Admin')->orderBy('name')->get();
       $allUsers = $roles->flatMap(fn($r) => $r->users);
       $totalUsers = $allUsers->count();
+
+      // Build a lookup: task_id => [user_ids]
+      $taskUserMap = [];
+      $taskRoleMap = [];
+      foreach ($allTasks as $t) {
+          $tUserIds = $t->assignedUsers->pluck('id')->toArray();
+          $taskUserMap[$t->id] = $tUserIds;
+          // Map task to roles via assigned users
+          $tRoleIds = [];
+          foreach ($roles as $role) {
+              $roleUserIds = $role->users->pluck('id')->toArray();
+              if (!empty(array_intersect($tUserIds, $roleUserIds))) {
+                  $tRoleIds[] = $role->id;
+              }
+          }
+          $taskRoleMap[$t->id] = $tRoleIds;
+      }
     @endphp
+
+    {{-- ====== FILTER BAR ====== --}}
+    <div x-data="{
+      filterRole: '',
+      filterUser: '',
+      taskUserMap: {{ json_encode($taskUserMap) }},
+      taskRoleMap: {{ json_encode($taskRoleMap) }},
+      usersForRole: {},
+      init() {
+        this.usersForRole = {{ json_encode($roles->mapWithKeys(fn($r) => [$r->id => $r->users->map(fn($u) => ['id' => $u->id, 'name' => $u->name])->values()])) }};
+        this.$watch('filterRole', () => { this.filterUser = ''; this.applyFilter(); });
+        this.$watch('filterUser', () => this.applyFilter());
+      },
+      get availableUsers() {
+        if (!this.filterRole) return {{ json_encode($allUsers->map(fn($u) => ['id' => $u->id, 'name' => $u->name])->unique('id')->sortBy('name')->values()) }};
+        return this.usersForRole[this.filterRole] || [];
+      },
+      applyFilter() {
+        const cards = document.querySelectorAll('.task-row');
+        let shown = 0;
+        cards.forEach(card => {
+          const tid = card.dataset.id;
+          const taskUsers = this.taskUserMap[tid] || [];
+          const taskRoles = this.taskRoleMap[tid] || [];
+          let visible = true;
+
+          // If task has no assigned users (anyone), always show
+          const isUnassigned = taskUsers.length === 0;
+
+          if (this.filterRole && !isUnassigned) {
+            visible = taskRoles.includes(parseInt(this.filterRole));
+          }
+          if (visible && this.filterUser && !isUnassigned) {
+            visible = taskUsers.includes(parseInt(this.filterUser));
+          }
+          // Unassigned tasks (anyone) always show
+          if (isUnassigned) visible = true;
+
+          card.style.display = visible ? '' : 'none';
+          if (visible) shown++;
+        });
+        // Update counter
+        const counter = document.getElementById('filter-count');
+        if (counter) counter.textContent = shown + ' task' + (shown !== 1 ? 's' : '') + ' shown';
+      },
+      clearFilters() {
+        this.filterRole = '';
+        this.filterUser = '';
+      }
+    }" class="bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm">
+      <div class="flex items-center gap-2 flex-wrap">
+        <div class="flex items-center gap-1.5 text-xs text-gray-500 flex-shrink-0">
+          <i class="fa-solid fa-filter text-gray-400"></i>
+          <span class="font-medium">Filter:</span>
+        </div>
+
+        {{-- Role filter --}}
+        <select x-model="filterRole"
+                class="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer">
+          <option value="">All Roles</option>
+          @foreach($roles as $role)
+            <option value="{{ $role->id }}">{{ $role->name }} ({{ $role->users->count() }})</option>
+          @endforeach
+        </select>
+
+        {{-- User filter --}}
+        <select x-model="filterUser"
+                class="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer">
+          <option value="">All Users</option>
+          <template x-for="u in availableUsers" :key="u.id">
+            <option :value="u.id" x-text="u.name"></option>
+          </template>
+        </select>
+
+        {{-- Clear button --}}
+        <button x-show="filterRole || filterUser" x-transition @click="clearFilters()"
+                class="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition">
+          <i class="fa-solid fa-xmark mr-0.5"></i> Clear
+        </button>
+
+        <span id="filter-count" class="text-[10px] text-gray-400 ml-auto">{{ $allTasks->count() }} task{{ $allTasks->count() !== 1 ? 's' : '' }} shown</span>
+      </div>
+    </div>
 
     {{-- ====== ADD TASK FORM (Slide-down) ====== --}}
     <div x-data="{
