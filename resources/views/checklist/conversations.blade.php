@@ -175,6 +175,9 @@
                     <span class="w-2.5 h-2.5 rounded-full bg-blue-400 flex-shrink-0"></span>
                   @endif
                   <p class="font-semibold text-gray-800 truncate">{{ $task->title }}</p>
+                  @if($task->trashed())
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-600 flex-shrink-0">Archived</span>
+                  @endif
                 </div>
                 @if($task->scheduled_time)
                   <p class="text-xs text-gray-400 mt-0.5 ml-5">⏰ {{ \Carbon\Carbon::parse($task->scheduled_time)->format('g:i A') }}</p>
@@ -234,9 +237,12 @@
                       <div class="flex items-center gap-2">
                         <span class="w-2.5 h-2.5 rounded-full bg-green-400 flex-shrink-0"></span>
                         <p class="font-semibold text-gray-800 truncate">{{ $task->title }}</p>
+                        @if($task->trashed())
+                          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-600 flex-shrink-0">Archived</span>
+                        @endif
                       </div>
                       @if($sub && $sub->user)
-                        <p class="text-xs text-gray-400 mt-0.5 ml-5">by {{ $sub->user->name }} · {{ $sub->created_at->format('g:i A') }}</p>
+                        <p class="text-xs text-gray-400 mt-0.5 ml-5">by {{ $sub->user->name }} · {{ $sub->created_at ? $sub->created_at->format('g:i A') : '' }}</p>
                       @endif
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0 ml-3">
@@ -379,7 +385,7 @@
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
           </button>
           <div class="flex-1 min-w-0">
-            <p class="font-semibold text-sm truncate">{{ $task->title }}</p>
+            <p class="font-semibold text-sm truncate">{{ $task->title }}@if($task->trashed()) <span class="text-red-200">[Archived]</span>@endif</p>
             <p class="text-xs text-blue-100">
               @if($isAnnouncement) 📢 Announcement
               @elseif($done) ✅ Completed

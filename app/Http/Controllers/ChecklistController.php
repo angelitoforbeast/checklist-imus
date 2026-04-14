@@ -384,15 +384,14 @@ class ChecklistController extends Controller
             ->get()
             ->keyBy('checklist_task_id');
 
-        if (!$isToday) {
-            $missingIds = $submissionsByTask->keys()->diff($tasks->pluck('id'));
-            if ($missingIds->isNotEmpty()) {
-                $extra = ChecklistTask::withTrashed()
-                    ->with('assignedUsers')
-                    ->whereIn('id', $missingIds)
-                    ->get();
-                $tasks = $tasks->merge($extra)->sortBy([['sort_order', 'asc'], ['id', 'asc']])->values();
-            }
+        // Include soft-deleted tasks that have submissions for this date (even for today)
+        $missingIds = $submissionsByTask->keys()->diff($tasks->pluck('id'));
+        if ($missingIds->isNotEmpty()) {
+            $extra = ChecklistTask::withTrashed()
+                ->with('assignedUsers')
+                ->whereIn('id', $missingIds)
+                ->get();
+            $tasks = $tasks->merge($extra)->sortBy([['sort_order', 'asc'], ['id', 'asc']])->values();
         }
 
         $doneCount  = $submissionsByTask->where('status', 'completed')->count();
@@ -476,15 +475,14 @@ class ChecklistController extends Controller
             $submissionsByTask[$taskId] = $subs->first();
         }
 
-        if (!$isToday) {
-            $missingIds = $submissionsByTask->keys()->diff($tasks->pluck('id'));
-            if ($missingIds->isNotEmpty()) {
-                $extra = ChecklistTask::withTrashed()
-                    ->with('assignedUsers')
-                    ->whereIn('id', $missingIds)
-                    ->get();
-                $tasks = $tasks->merge($extra)->sortBy([['sort_order', 'asc'], ['id', 'asc']])->values();
-            }
+        // Include soft-deleted tasks that have submissions for this date (even for today)
+        $missingIds = $submissionsByTask->keys()->diff($tasks->pluck('id'));
+        if ($missingIds->isNotEmpty()) {
+            $extra = ChecklistTask::withTrashed()
+                ->with(['assignedUsers', 'referenceFiles'])
+                ->whereIn('id', $missingIds)
+                ->get();
+            $tasks = $tasks->merge($extra)->sortBy([['sort_order', 'asc'], ['id', 'asc']])->values();
         }
 
         // Calculate doneCount using isTaskDone for proper individual/announcement handling
