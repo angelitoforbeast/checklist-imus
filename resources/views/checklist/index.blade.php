@@ -527,6 +527,48 @@
                    this.uploading = false;
                  }
                },
+               submitting: false,
+               taskCompleted: false,
+               taskType: '{{ $task->type }}',
+               get requirementsMet() {
+                 if (!this.taskStarted) return false;
+                 const hasPhotos = this.sentPhotos.length > 0;
+                 const hasNotes = this.sentNotes.length > 0;
+                 switch (this.taskType) {
+                   case 'photo': return hasPhotos;
+                   case 'note': return hasNotes;
+                   case 'photo_note': return hasPhotos; // photo required, note optional
+                   case 'both': return hasPhotos && hasNotes;
+                   case 'any': return hasPhotos || hasNotes;
+                   default: return hasPhotos || hasNotes;
+                 }
+               },
+               async submitTask() {
+                 if (this.submitting || this.taskCompleted) return;
+                 this.submitting = true;
+                 try {
+                   const fd = new FormData();
+                   fd.append('_token', document.querySelector('meta[name=csrf-token]').content);
+                   // Include the latest note if any
+                   if (this.sentNotes.length > 0) {
+                     fd.append('notes', this.sentNotes[this.sentNotes.length - 1].text);
+                   }
+                   const res = await fetch('{{ route('checklist.submit', $task) }}', {
+                     method: 'POST',
+                     body: fd,
+                     headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                   });
+                   const data = await res.json();
+                   if (data.success) {
+                     this.taskCompleted = true;
+                   } else {
+                     alert(data.error || 'Failed to submit. Please try again.');
+                   }
+                 } catch(e) {
+                   alert('Failed to submit. Check your connection.');
+                 }
+                 this.submitting = false;
+               },
                async sendNote() {
                  if (this.sendingNote || !this.noteText.trim()) return;
                  this.sendingNote = true;
@@ -763,9 +805,44 @@
             </div>
           </div>
 
+          {{-- ===== DONE BUTTON (shown when requirements met) ===== --}}
+          <template x-if="requirementsMet && !taskCompleted">
+            <div class="flex-shrink-0 bg-green-50 border-t border-green-200 px-4 py-3">
+              <div class="max-w-lg mx-auto">
+                <button @click="submitTask()"
+                        :disabled="submitting"
+                        class="w-full py-3.5 rounded-2xl font-bold text-base transition-all duration-200 text-white active:scale-[0.98] shadow-lg"
+                        :class="submitting ? 'bg-gray-400' : 'bg-green-500'"
+                        :style="submitting ? '' : 'box-shadow: 0 10px 15px -3px rgba(34,197,94,0.3)'">
+                  <span x-show="!submitting">✅ Mark as Done</span>
+                  <span x-show="submitting" class="flex items-center justify-center gap-2">
+                    <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    Submitting...
+                  </span>
+                </button>
+              </div>
+            </div>
+          </template>
+
+          {{-- Completed confirmation --}}
+          <template x-if="taskCompleted">
+            <div class="flex-shrink-0 bg-green-50 border-t border-green-200 px-4 py-3">
+              <div class="max-w-lg mx-auto">
+                <button @click="clearFocus(); setTimeout(() => window.location.reload(), 100);"
+                        class="w-full py-3.5 rounded-2xl font-bold text-base text-white bg-green-500 active:scale-[0.98] shadow-lg"
+                        style="box-shadow: 0 10px 15px -3px rgba(34,197,94,0.3)">
+                  ✅ Done - Go Back
+                </button>
+              </div>
+            </div>
+          </template>
+
           {{-- ===== MESSENGER BOTTOM BAR ===== --}}
           <div class="flex-shrink-0 border-t border-gray-200 bg-white" style="padding-bottom: env(safe-area-inset-bottom, 0px);"
-               x-show="taskStarted">
+               x-show="taskStarted && !taskCompleted">
             <div class="max-w-lg mx-auto px-3 py-2">
               <div class="flex items-end gap-2">
 

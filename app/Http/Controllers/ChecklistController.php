@@ -539,6 +539,10 @@ class ChecklistController extends Controller
                 'created_at'              => now(),
             ]);
 
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => true, 'message' => "'{$task->title}' acknowledged!"]);
+            }
+
             return back()->with('success', "'{$task->title}' acknowledged!");
         }
 
@@ -574,10 +578,27 @@ class ChecklistController extends Controller
             $rules['files.*'] = "file|mimes:{$anyMimes}";
         }
 
-        $request->validate($rules);
+        // For AJAX "mark as done" calls, relax rules since files are already uploaded
+        if ($request->ajax() || $request->wantsJson()) {
+            // Only validate notes if provided
+            $rules = ['notes' => 'nullable|string|max:2000'];
+            // For 'both' type, check notes exist in submission logs if not in request
+            if ($task->type === 'both' && !$request->notes && $existing) {
+                $hasNotes = $existing->logs()->where('action', 'note_sent')->exists();
+                if (!$hasNotes) {
+                    return response()->json(['success' => false, 'error' => 'Notes are required for this task.'], 422);
+                }
+            }
+            // Check files exist for photo-required tasks
+            if (in_array($task->type, ['photo', 'photo_note', 'both']) && !$hasExistingFiles && !$request->hasFile('files')) {
+                return response()->json(['success' => false, 'error' => 'At least one photo is required.'], 422);
+            }
+        } else {
+            $request->validate($rules);
 
-        if (in_array($task->type, ['photo', 'photo_note', 'both']) && !$hasExistingFiles && !$request->hasFile('files')) {
-            return back()->withErrors(['files' => 'At least one photo is required.'])->withInput();
+            if (in_array($task->type, ['photo', 'photo_note', 'both']) && !$hasExistingFiles && !$request->hasFile('files')) {
+                return back()->withErrors(['files' => 'At least one photo is required.'])->withInput();
+            }
         }
 
         $submission = ChecklistSubmission::updateOrCreate(
@@ -611,6 +632,10 @@ class ChecklistController extends Controller
                     'sort_order'         => $nextOrder + $i,
                 ]);
             }
+        }
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json(['success' => true, 'message' => "'{$task->title}' submitted!"]);
         }
 
         return back()->with('success', "'{$task->title}' submitted!");
