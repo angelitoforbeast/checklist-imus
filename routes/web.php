@@ -48,6 +48,7 @@ Route::middleware(['web','auth'])->prefix('checklist')->name('checklist.')->grou
         Route::post('/tasks', [ChecklistController::class, 'storeTask'])->name('store-task');
         Route::patch('/tasks/{task}', [ChecklistController::class, 'updateTask'])->name('update-task');
         Route::delete('/tasks/{task}', [ChecklistController::class, 'destroyTask'])->name('destroy-task');
+        Route::post('/tasks/{task}/duplicate', [ChecklistController::class, 'duplicateTask'])->name('duplicate-task');
         Route::post('/tasks/reorder', [ChecklistController::class, 'reorderTasks'])->name('reorder');
         Route::post('/submission/{submission}/revert', [ChecklistController::class, 'revertSubmission'])->name('revert-submission');
     Route::post('/task/{task}/send-comment', [ChecklistController::class, 'sendComment'])->name('send-comment');

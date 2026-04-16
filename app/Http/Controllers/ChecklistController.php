@@ -1035,6 +1035,34 @@ class ChecklistController extends Controller
     }
 
     // =========================================================================
+    // DUPLICATE TASK
+    // =========================================================================
+
+    public function duplicateTask(ChecklistTask $task)
+    {
+        $newTask = $task->replicate();
+        $newTask->title = 'Copy of ' . $task->title;
+        $newTask->sort_order = (ChecklistTask::max('sort_order') ?? 0) + 1;
+        $newTask->is_active = true;
+        $newTask->save();
+
+        // Copy assigned users
+        $newTask->assignedUsers()->sync($task->assignedUsers->pluck('id')->toArray());
+
+        // Copy reference files
+        foreach ($task->referenceFiles as $refFile) {
+            $newTask->referenceFiles()->create([
+                'file_path'          => $refFile->file_path,
+                'file_original_name' => $refFile->file_original_name,
+                'file_mime'          => $refFile->file_mime,
+                'sort_order'         => $refFile->sort_order,
+            ]);
+        }
+
+        return back()->with('success', 'Task duplicated: "' . $newTask->title . '"');
+    }
+
+    // =========================================================================
     // REORDER TASKS
     // =========================================================================
 

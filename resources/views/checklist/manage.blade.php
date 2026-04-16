@@ -531,10 +531,33 @@
                 </div>
               </div>
 
-              {{-- Expand chevron --}}
-              <button @click="expanded = !expanded" class="flex-shrink-0 p-1 text-gray-400 hover:text-gray-600">
-                <svg class="w-5 h-5 transition-transform duration-200" :class="expanded && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-              </button>
+              {{-- Quick action buttons --}}
+              <div class="flex items-center gap-1 flex-shrink-0">
+                {{-- Edit --}}
+                <button @click="expanded = true; $nextTick(() => editing = true)"
+                        class="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition" title="Edit">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                </button>
+                {{-- Duplicate --}}
+                <form method="POST" action="{{ route('checklist.duplicate-task', $t) }}" class="inline">
+                  @csrf
+                  <button type="submit" class="p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition" title="Duplicate">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                  </button>
+                </form>
+                {{-- Delete --}}
+                <form method="POST" action="{{ route('checklist.destroy-task', $t) }}"
+                      onsubmit="return confirm('Delete this task?')" class="inline">
+                  @csrf @method('DELETE')
+                  <button type="submit" class="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition" title="Delete">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  </button>
+                </form>
+                {{-- Expand chevron --}}
+                <button @click="expanded = !expanded" class="p-1.5 text-gray-400 hover:text-gray-600">
+                  <svg class="w-5 h-5 transition-transform duration-200" :class="expanded && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -634,6 +657,13 @@
                         class="flex-1 py-2 text-xs font-medium rounded-xl border border-blue-200 text-blue-600 hover:bg-blue-50 active:scale-95 transition">
                   <i class="fa-solid fa-pen mr-1"></i> Edit
                 </button>
+                <form method="POST" action="{{ route('checklist.duplicate-task', $t) }}" class="flex-1">
+                  @csrf
+                  <button type="submit"
+                          class="w-full py-2 text-xs font-medium rounded-xl border border-green-200 text-green-600 hover:bg-green-50 active:scale-95 transition">
+                    <i class="fa-solid fa-copy mr-1"></i> Duplicate
+                  </button>
+                </form>
                 <form method="POST" action="{{ route('checklist.update-task', $t) }}" class="flex-1">
                   @csrf @method('PATCH')
                   <input type="hidden" name="title" value="{{ $t->title }}">
@@ -656,7 +686,7 @@
                   </button>
                 </form>
                 <form method="POST" action="{{ route('checklist.destroy-task', $t) }}"
-                      onsubmit="return confirm('Delete \'{{ addslashes($t->title) }}\'?')" class="flex-shrink-0">
+                      onsubmit="return confirm('Delete this task?')" class="flex-shrink-0">
                   @csrf @method('DELETE')
                   <button type="submit"
                           class="py-2 px-3 text-xs font-medium rounded-xl border border-red-200 text-red-500 hover:bg-red-50 active:scale-95 transition">
