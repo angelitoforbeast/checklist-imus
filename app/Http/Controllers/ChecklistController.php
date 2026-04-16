@@ -849,14 +849,6 @@ class ChecklistController extends Controller
             abort(403);
         }
 
-        // Log the reset
-        $submission->logs()->create([
-            'user_id' => Auth::id(),
-            'action' => 'reset',
-            'notes_snapshot' => 'Full reset by admin',
-            'file_count' => $submission->files->count(),
-        ]);
-
         // Delete all uploaded files from storage and database
         foreach ($submission->files as $file) {
             Storage::disk('public')->delete($file->file_path);
