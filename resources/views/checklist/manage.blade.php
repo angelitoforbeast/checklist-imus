@@ -233,19 +233,20 @@
           </div>
         </div>
 
-        {{-- Required Photos (only for photo-related types) --}}
-        <div x-show="['photo','photo_note','both'].includes(taskType)" x-transition class="">
-          <label class="text-xs font-medium text-gray-600 mb-1 block">Required Photos <span class="text-gray-400">(minimum before Done button appears)</span></label>
-          <input type="number" name="required_photos" x-model="requiredPhotos" min="1" max="50" value="1"
-                 class="w-32 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
-        </div>
-
-        {{-- Required Photos Before Start (only for photo-related types) --}}
-        <div x-show="['photo','photo_note','both'].includes(taskType)" x-transition>
-          <label class="text-xs font-medium text-gray-600 mb-1 block">Required Photos Before Start <span class="text-gray-400">(0 = no requirement)</span></label>
-          <input type="number" name="required_photos_before_start" min="0" max="50" value="{{ old('required_photos_before_start', 0) }}"
-                 class="w-32 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
-          <p class="text-[10px] text-gray-400 mt-1">User must upload this many photos before the Start button appears</p>
+        {{-- Required Photos: Before Start (left) + Before Done (right) --}}
+        <div x-show="['photo','photo_note','both'].includes(taskType)" x-transition class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-medium text-gray-600 mb-1 block">📸 Photos Before Start <span class="text-gray-400">(0 = none)</span></label>
+            <input type="number" name="required_photos_before_start" min="0" max="50" value="{{ old('required_photos_before_start', 0) }}"
+                   class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent">
+            <p class="text-[10px] text-gray-400 mt-1">Must upload before Start button appears</p>
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600 mb-1 block">📸 Photos Before Done <span class="text-gray-400">(min. 1)</span></label>
+            <input type="number" name="required_photos" x-model="requiredPhotos" min="1" max="50" value="1"
+                   class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+            <p class="text-[10px] text-gray-400 mt-1">Must upload before Done button appears</p>
+          </div>
         </div>
 
         {{-- Announcement info box --}}
@@ -803,20 +804,21 @@
                 </div>
               </div>
 
-              {{-- Required Photos (edit, only for photo-related types) --}}
-              <div x-show="['photo','photo_note','both'].includes(editType)" x-transition>
-                <label class="text-xs font-medium text-gray-600 mb-1 block">Required Photos <span class="text-gray-400">(minimum before Done button appears)</span></label>
-                <input type="number" name="required_photos" x-model="editRequiredPhotos" min="1" max="50"
-                       class="w-32 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
-              </div>
-
-              {{-- Required Photos Before Start (edit) --}}
-              <div x-show="['photo','photo_note','both'].includes(editType)" x-transition>
-                <label class="text-xs font-medium text-gray-600 mb-1 block">Required Photos Before Start <span class="text-gray-400">(0 = no requirement)</span></label>
-                <input type="number" name="required_photos_before_start" min="0" max="50"
-                       value="{{ $t->required_photos_before_start ?? 0 }}"
-                       class="w-32 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
-                <p class="text-[10px] text-gray-400 mt-1">User must upload this many photos before the Start button appears</p>
+              {{-- Required Photos: Before Start (left) + Before Done (right) --}}
+              <div x-show="['photo','photo_note','both'].includes(editType)" x-transition class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="text-xs font-medium text-gray-600 mb-1 block">📸 Photos Before Start <span class="text-gray-400">(0 = none)</span></label>
+                  <input type="number" name="required_photos_before_start" min="0" max="50"
+                         value="{{ $t->required_photos_before_start ?? 0 }}"
+                         class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent">
+                  <p class="text-[10px] text-gray-400 mt-1">Must upload before Start button appears</p>
+                </div>
+                <div>
+                  <label class="text-xs font-medium text-gray-600 mb-1 block">📸 Photos Before Done <span class="text-gray-400">(min. 1)</span></label>
+                  <input type="number" name="required_photos" x-model="editRequiredPhotos" min="1" max="50"
+                         class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+                  <p class="text-[10px] text-gray-400 mt-1">Must upload before Done button appears</p>
+                </div>
               </div>
 
               {{-- Announcement info box (edit) --}}

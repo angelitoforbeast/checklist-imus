@@ -866,15 +866,20 @@
 
               {{-- PRE-START PHOTO PROGRESS (shown when photos needed before start) --}}
               <template x-if="!taskStarted && requiredPhotosBeforeStart > 0 && !preStartPhotosMet">
-                <div class="flex justify-center py-4">
-                  <div class="text-center">
+                <div class="py-4 px-4">
+                  <div class="bg-orange-50 border-2 border-orange-300 rounded-2xl px-4 py-4 text-center">
                     <div class="flex items-center justify-center gap-2 mb-2">
-                      <div class="flex-1 bg-orange-200 rounded-full h-2 overflow-hidden w-40">
+                      <span class="text-2xl">📸</span>
+                      <p class="text-sm font-bold text-orange-700">Upload Photos to Start</p>
+                    </div>
+                    <p class="text-xs text-orange-600 mb-3">You need to upload <span class="font-bold text-orange-800" x-text="requiredPhotosBeforeStart"></span> photo(s) before you can start this task</p>
+                    <div class="flex items-center justify-center gap-2 mb-2">
+                      <div class="flex-1 bg-orange-200 rounded-full h-3 overflow-hidden max-w-[200px]">
                         <div class="bg-orange-500 h-full rounded-full transition-all duration-300" :style="'width:' + Math.min(100, (sentPhotos.length / requiredPhotosBeforeStart) * 100) + '%'"></div>
                       </div>
-                      <span class="text-xs font-medium text-orange-600 whitespace-nowrap" x-text="'📸 ' + sentPhotos.length + '/' + requiredPhotosBeforeStart"></span>
+                      <span class="text-sm font-bold text-orange-700 whitespace-nowrap" x-text="sentPhotos.length + ' / ' + requiredPhotosBeforeStart"></span>
                     </div>
-                    <p class="text-xs text-gray-500">Upload <span class="font-semibold" x-text="requiredPhotosBeforeStart - sentPhotos.length"></span> more photo(s) to unlock Start</p>
+                    <p class="text-xs text-orange-500 font-medium" x-text="(requiredPhotosBeforeStart - sentPhotos.length) + ' more photo(s) needed'"></p>
                   </div>
                 </div>
               </template>
@@ -1107,21 +1112,24 @@
 
           {{-- Pre-start upload bar (shown when photos needed before start) --}}
           <template x-if="!taskStarted && !preStartPhotosMet">
-            <div class="flex-shrink-0 border-t border-gray-200 bg-white" style="padding-bottom: env(safe-area-inset-bottom, 0px);">
-              <div class="max-w-lg mx-auto px-3 py-2">
-                <div class="flex items-end gap-2">
+            <div class="flex-shrink-0 border-t-2 border-orange-300 bg-orange-50" style="padding-bottom: env(safe-area-inset-bottom, 0px);">
+              <div class="max-w-lg mx-auto px-3 py-3">
+                <p class="text-xs font-bold text-orange-700 text-center mb-2">📸 UPLOAD PHOTOS TO START THIS TASK</p>
+                <div class="flex items-center justify-center gap-3">
                   @if(in_array($task->type, ['photo', 'any', 'both', 'photo_note']))
                     <button type="button" @click="$refs.preStartCam{{ $task->id }}.click()"
                             :disabled="uploading"
-                            class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center active:bg-orange-50 transition"
-                            :style="uploading ? 'color:#9ca3af' : 'color:#ea580c'">
-                      <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 15.2a3.2 3.2 0 100-6.4 3.2 3.2 0 000 6.4z"/><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>
+                            class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-semibold text-sm text-white active:scale-95 transition-all shadow-md"
+                            :class="uploading ? 'bg-gray-400' : 'bg-orange-500'">
+                      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 15.2a3.2 3.2 0 100-6.4 3.2 3.2 0 000 6.4z"/><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>
+                      Camera
                     </button>
                     <button type="button" @click="$refs.preStartGal{{ $task->id }}.click()"
                             :disabled="uploading"
-                            class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center active:bg-orange-50 transition"
-                            :style="uploading ? 'color:#9ca3af' : 'color:#ea580c'">
-                      <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                            class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-semibold text-sm text-white active:scale-95 transition-all shadow-md"
+                            :class="uploading ? 'bg-gray-400' : 'bg-orange-500'">
+                      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                      Gallery
                     </button>
                     <input type="file" x-ref="preStartCam{{ $task->id }}" class="hidden"
                            accept="image/*,video/*" capture="environment"
@@ -1130,9 +1138,6 @@
                            multiple accept="image/*,video/*"
                            @change="autoUpload($event.target.files); $event.target.value='';">
                   @endif
-                  <div class="flex-1 text-center">
-                    <p class="text-xs text-orange-600 font-medium" x-text="'📸 Upload ' + (requiredPhotosBeforeStart - sentPhotos.length) + ' more photo(s)'"></p>
-                  </div>
                 </div>
               </div>
             </div>
