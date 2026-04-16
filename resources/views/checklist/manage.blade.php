@@ -442,6 +442,52 @@
     </div>
 
     {{-- ====== TASK CARDS ====== --}}
+    <div x-data="{
+           selectedTasks: new Set(),
+           get selectedCount() { return this.selectedTasks.size; },
+           toggleTask(id) {
+             if (this.selectedTasks.has(id)) this.selectedTasks.delete(id);
+             else this.selectedTasks.add(id);
+             this.selectedTasks = new Set(this.selectedTasks);
+           },
+           isSelected(id) { return this.selectedTasks.has(id); },
+           selectAll() {
+             const visible = [...document.querySelectorAll('.task-row')].filter(r => r.style.display !== 'none').map(r => parseInt(r.dataset.id));
+             const allSelected = visible.every(id => this.selectedTasks.has(id));
+             visible.forEach(id => { if (allSelected) this.selectedTasks.delete(id); else this.selectedTasks.add(id); });
+             this.selectedTasks = new Set(this.selectedTasks);
+           },
+           allVisibleSelected() {
+             const visible = [...document.querySelectorAll('.task-row')].filter(r => r.style.display !== 'none').map(r => parseInt(r.dataset.id));
+             return visible.length > 0 && visible.every(id => this.selectedTasks.has(id));
+           },
+           clearSelection() { this.selectedTasks = new Set(); },
+           bulkAssignOpen: false,
+           bulkAssignUsers: new Set(),
+           get bulkAssignCount() { return this.bulkAssignUsers.size; },
+           bulkToggleUser(id) {
+             if (this.bulkAssignUsers.has(id)) this.bulkAssignUsers.delete(id);
+             else this.bulkAssignUsers.add(id);
+             this.bulkAssignUsers = new Set(this.bulkAssignUsers);
+           },
+           bulkToggleRole(userIds) {
+             const allChecked = userIds.every(id => this.bulkAssignUsers.has(id));
+             userIds.forEach(id => { if (allChecked) this.bulkAssignUsers.delete(id); else this.bulkAssignUsers.add(id); });
+             this.bulkAssignUsers = new Set(this.bulkAssignUsers);
+           },
+           bulkToggleAll() {
+             const allIds = {{ json_encode($allUsers->pluck('id')->values()->toArray()) }};
+             const allChecked = allIds.every(id => this.bulkAssignUsers.has(id));
+             allIds.forEach(id => { if (allChecked) this.bulkAssignUsers.delete(id); else this.bulkAssignUsers.add(id); });
+             this.bulkAssignUsers = new Set(this.bulkAssignUsers);
+           },
+           bulkIsAllSelected() {
+             const allIds = {{ json_encode($allUsers->pluck('id')->values()->toArray()) }};
+             return allIds.length > 0 && allIds.every(id => this.bulkAssignUsers.has(id));
+           },
+           bulkIsRoleSelected(userIds) { return userIds.length > 0 && userIds.every(id => this.bulkAssignUsers.has(id)); }
+         }">
+
     <div id="task-sort-list" class="space-y-3">
       @forelse($allTasks as $t)
         @php $assignedIds = $t->assignedUsers->pluck('id')->toArray(); @endphp
@@ -485,6 +531,13 @@
           {{-- Card Header (always visible) --}}
           <div class="px-4 py-3">
             <div class="flex items-center gap-3">
+              {{-- Checkbox --}}
+              <label class="flex-shrink-0 cursor-pointer" @click.stop>
+                <input type="checkbox" class="accent-blue-600 w-4 h-4 rounded cursor-pointer"
+                       :checked="isSelected({{ $t->id }})"
+                       @change="toggleTask({{ $t->id }})">
+              </label>
+
               {{-- Drag handle --}}
               <span class="drag-handle cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0 select-none text-lg leading-none" title="Drag to reorder">⠿</span>
 
@@ -968,6 +1021,110 @@
         </div>
       @endforelse
     </div>
+
+    {{-- ====== FLOATING BULK ACTIONS BAR ====== --}}
+    <div x-show="selectedCount > 0" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100 translate-y-0" x-transition:leave-end="opacity-0 translate-y-4"
+         x-cloak
+         class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white rounded-2xl shadow-2xl px-4 py-3 flex items-center gap-3 max-w-lg w-[calc(100%-2rem)]">
+
+      {{-- Select All toggle --}}
+      <label class="flex-shrink-0 cursor-pointer flex items-center gap-2" @click.prevent="selectAll()">
+        <input type="checkbox" class="accent-blue-400 w-4 h-4 rounded pointer-events-none" :checked="allVisibleSelected()">
+        <span class="text-xs font-medium">All</span>
+      </label>
+
+      {{-- Count --}}
+      <span class="text-xs bg-blue-600 px-2 py-0.5 rounded-full font-semibold" x-text="selectedCount + ' selected'"></span>
+
+      <div class="flex-1"></div>
+
+      {{-- Assign To --}}
+      <div class="relative">
+        <button @click="bulkAssignOpen = !bulkAssignOpen; if(bulkAssignOpen) bulkAssignUsers = new Set()"
+                class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-xl transition">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Assign To
+        </button>
+
+        {{-- Assign dropdown --}}
+        <div x-show="bulkAssignOpen" @click.outside="bulkAssignOpen = false" x-transition
+             class="absolute bottom-full mb-2 right-0 w-72 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden text-gray-800 max-h-80 flex flex-col">
+
+          {{-- Select All header --}}
+          <label @click.prevent="bulkToggleAll()"
+                 class="flex items-center gap-2.5 px-3 py-2.5 bg-blue-50 border-b border-blue-100 cursor-pointer hover:bg-blue-100 transition flex-shrink-0">
+            <input type="checkbox" class="accent-blue-600 w-4 h-4 pointer-events-none rounded" :checked="bulkIsAllSelected()">
+            <span class="text-xs font-bold text-blue-700">Select All</span>
+            <span class="text-xs text-blue-400 font-normal">({{ $totalUsers }} users)</span>
+          </label>
+
+          {{-- Scrollable roles + users --}}
+          <div class="divide-y divide-gray-100 overflow-y-auto flex-1">
+            @foreach($roles as $role)
+              @if($role->users->count() > 0)
+                @php $roleUserIds = $role->users->pluck('id')->toArray(); @endphp
+                <div>
+                  <label @click.prevent="bulkToggleRole({{ json_encode($roleUserIds) }})"
+                         class="flex items-center gap-2.5 px-3 py-2 bg-gray-50 cursor-pointer hover:bg-gray-100 transition">
+                    <input type="checkbox" class="accent-blue-600 w-3.5 h-3.5 pointer-events-none rounded"
+                           :checked="bulkIsRoleSelected({{ json_encode($roleUserIds) }})">
+                    <span class="text-xs font-semibold text-gray-700">{{ $role->name }}</span>
+                    <span class="text-[10px] text-gray-400 font-normal">({{ $role->users->count() }})</span>
+                  </label>
+                  @foreach($role->users as $u)
+                    <label @click.prevent="bulkToggleUser({{ $u->id }})"
+                           class="flex items-center gap-2.5 px-3 py-2 pl-8 cursor-pointer hover:bg-gray-50 transition"
+                           :class="bulkAssignUsers.has({{ $u->id }}) && 'bg-blue-50/50'">
+                      <input type="checkbox" class="accent-blue-600 w-3.5 h-3.5 pointer-events-none rounded"
+                             :checked="bulkAssignUsers.has({{ $u->id }})">
+                      <span class="text-xs text-gray-600">{{ $u->name }}</span>
+                    </label>
+                  @endforeach
+                </div>
+              @endif
+            @endforeach
+          </div>
+
+          {{-- Apply button --}}
+          <form method="POST" action="{{ route('checklist.bulk-assign') }}" class="flex-shrink-0">
+            @csrf
+            <template x-for="tid in [...selectedTasks]" :key="tid">
+              <input type="hidden" name="task_ids[]" :value="tid">
+            </template>
+            <template x-for="uid in [...bulkAssignUsers]" :key="uid">
+              <input type="hidden" name="assigned_users[]" :value="uid">
+            </template>
+            <div class="px-3 py-2 bg-gray-50 border-t border-gray-100">
+              <button type="submit"
+                      class="w-full py-2 bg-blue-600 text-white text-xs font-semibold rounded-xl hover:bg-blue-700 transition">
+                <span x-text="'Apply to ' + selectedCount + ' task(s)'"></span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {{-- Delete Selected --}}
+      <form method="POST" action="{{ route('checklist.bulk-delete') }}"
+            onsubmit="return confirm('Delete all selected tasks?')">
+        @csrf
+        <template x-for="tid in [...selectedTasks]" :key="tid">
+          <input type="hidden" name="task_ids[]" :value="tid">
+        </template>
+        <button type="submit"
+                class="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-xl transition">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          Delete
+        </button>
+      </form>
+
+      {{-- Clear selection --}}
+      <button @click="clearSelection()" class="p-1.5 text-gray-400 hover:text-white transition" title="Clear selection">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    </div> {{-- end bulk selection wrapper --}}
 
   </div>
 

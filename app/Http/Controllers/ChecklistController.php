@@ -1063,6 +1063,50 @@ class ChecklistController extends Controller
     }
 
     // =========================================================================
+    // BULK ASSIGN TASKS
+    // =========================================================================
+
+    public function bulkAssign(Request $request)
+    {
+        $request->validate([
+            'task_ids'        => 'required|array|min:1',
+            'task_ids.*'      => 'integer|exists:checklist_tasks,id',
+            'assigned_users'  => 'nullable|array',
+            'assigned_users.*'=> 'integer|exists:users,id',
+        ]);
+
+        $userIds = array_filter((array) $request->input('assigned_users', []));
+        $count = 0;
+
+        foreach ($request->input('task_ids') as $taskId) {
+            $task = ChecklistTask::find($taskId);
+            if ($task) {
+                $task->assignedUsers()->sync($userIds);
+                $count++;
+            }
+        }
+
+        return back()->with('success', "Assigned " . count($userIds) . " user(s) to {$count} task(s).");
+    }
+
+    // =========================================================================
+    // BULK DELETE TASKS
+    // =========================================================================
+
+    public function bulkDelete(Request $request)
+    {
+        $request->validate([
+            'task_ids'   => 'required|array|min:1',
+            'task_ids.*' => 'integer|exists:checklist_tasks,id',
+        ]);
+
+        $count = ChecklistTask::whereIn('id', $request->input('task_ids'))->count();
+        ChecklistTask::whereIn('id', $request->input('task_ids'))->delete();
+
+        return back()->with('success', "{$count} task(s) deleted.");
+    }
+
+    // =========================================================================
     // REORDER TASKS
     // =========================================================================
 
