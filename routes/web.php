@@ -61,7 +61,8 @@ Route::middleware(['web','auth'])->prefix('checklist')->name('checklist.')->grou
 
 // 🔐 Admin Panel — Roles & Users
 Route::middleware(['web','auth','admin'])->prefix('admin')->name('admin.')->group(function () {
-    Route::get('/roles', [RoleController::class, 'index'])->name('roles');
+    Route::get('/roles', [RoleController::class, 'rolesIndex'])->name('roles');
+    Route::get('/users', [RoleController::class, 'usersIndex'])->name('users');
     Route::post('/roles', [RoleController::class, 'storeRole'])->name('store-role');
     Route::patch('/roles/{role}', [RoleController::class, 'updateRole'])->name('update-role');
     Route::delete('/roles/{role}', [RoleController::class, 'destroyRole'])->name('destroy-role');

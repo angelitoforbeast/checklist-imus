@@ -66,7 +66,11 @@
                     </a>
                     <a href="{{ route('admin.roles') }}"
                        class="rounded-md px-3 py-2 text-sm font-medium {{ request()->is('admin/roles*') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }} transition">
-                      <i class="fa-solid fa-users-gear mr-1"></i> Roles & Users
+                      <i class="fa-solid fa-shield-halved mr-1"></i> Roles
+                    </a>
+                    <a href="{{ route('admin.users') }}"
+                       class="rounded-md px-3 py-2 text-sm font-medium {{ request()->is('admin/users*') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }} transition">
+                      <i class="fa-solid fa-users mr-1"></i> Users
                     </a>
                   @endif
                 @endif
@@ -157,7 +161,11 @@
           </a>
           <a href="{{ route('admin.roles') }}" @click="mobileMenu = false"
              class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm {{ request()->is('admin/roles*') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }} transition">
-            <i class="fa-solid fa-users-gear w-5 text-center"></i> Roles & Users
+            <i class="fa-solid fa-shield-halved w-5 text-center"></i> Roles
+          </a>
+          <a href="{{ route('admin.users') }}" @click="mobileMenu = false"
+             class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm {{ request()->is('admin/users*') ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }} transition">
+            <i class="fa-solid fa-users w-5 text-center"></i> Users
           </a>
         @endif
 

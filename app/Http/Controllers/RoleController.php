@@ -10,12 +10,19 @@ use Illuminate\Support\Str;
 
 class RoleController extends Controller
 {
-    public function index()
+    public function rolesIndex()
     {
-        $roles = Role::withCount('users')->orderBy('id')->get();
+        $roles = Role::withCount('users')->orderByDesc('level')->orderBy('name')->get();
+
+        return view('admin.roles', compact('roles'));
+    }
+
+    public function usersIndex()
+    {
+        $roles = Role::withCount('users')->orderByDesc('level')->orderBy('name')->get();
         $users = User::with('role')->orderBy('name')->get();
 
-        return view('admin.roles', compact('roles', 'users'));
+        return view('admin.users', compact('roles', 'users'));
     }
 
     public function storeRole(Request $request)
@@ -28,6 +35,7 @@ class RoleController extends Controller
             'name'     => $validated['name'],
             'slug'     => Str::slug($validated['name']),
             'is_admin' => $request->boolean('is_admin'),
+            'level'    => $request->integer('level', 0),
         ]);
 
         return back()->with('success', 'Role added!');
@@ -43,6 +51,7 @@ class RoleController extends Controller
             'name'     => $validated['name'],
             'slug'     => Str::slug($validated['name']),
             'is_admin' => $request->boolean('is_admin'),
+            'level'    => $request->integer('level', $role->level),
         ]);
 
         return back()->with('success', 'Role updated!');
