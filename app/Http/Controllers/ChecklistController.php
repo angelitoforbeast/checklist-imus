@@ -863,8 +863,6 @@ class ChecklistController extends Controller
         $submission->started_at = null;
         $submission->notes = null;
         $submission->file_path = null;
-        $submission->file_original_name = null;
-        $submission->file_mime = null;
         $submission->save();
 
         if (request()->ajax()) {
