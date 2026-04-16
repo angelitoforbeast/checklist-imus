@@ -432,6 +432,7 @@
                taskStarted: {{ $hasStarted ? 'true' : 'false' }},
                startedAt: '{{ $hasStarted ? $sub->started_at->format('g:i A') : '' }}',
                startedBy: '{{ $hasStarted ? ($sub->user->name ?? Auth::user()->name) : '' }}',
+               startedAtTs: {{ $hasStarted && $sub->started_at ? $sub->started_at->timestamp : 0 }},
                sentPhotos: [
                  @if($sub)
                    @foreach($subFiles as $f)
@@ -594,6 +595,7 @@
                      this.taskStarted = true;
                      this.startedAt = data.started_at;
                      this.startedBy = data.user;
+                     this.startedAtTs = Math.floor(Date.now()/1000);
                    } else {
                      alert(data.error || 'Failed to start task');
                    }
@@ -626,6 +628,7 @@
                          this.taskStarted = true;
                          this.startedAt = data.uploaded_at;
                          this.startedBy = data.uploaded_by;
+                         this.startedAtTs = Math.floor(Date.now()/1000);
                        }
                        this.$nextTick(() => {
                          const chatArea = this.$refs.chatArea{{ $task->id }};
@@ -645,24 +648,37 @@
                taskType: '{{ $task->type }}',
                requiredPhotos: {{ $task->required_photos ?? 1 }},
                requiredPhotosBeforeStart: {{ $task->required_photos_before_start ?? 0 }},
+               get preStartPhotos() {
+                 // Photos uploaded BEFORE the task was started (or all if not started yet)
+                 if (!this.taskStarted || this.startedAtTs === 0) return this.sentPhotos;
+                 return this.sentPhotos.filter(p => p.ts <= this.startedAtTs);
+               },
+               get postStartPhotos() {
+                 // Photos uploaded AFTER the task was started
+                 if (!this.taskStarted || this.startedAtTs === 0) return [];
+                 return this.sentPhotos.filter(p => p.ts > this.startedAtTs);
+               },
                get preStartPhotosMet() {
                  if (this.requiredPhotosBeforeStart <= 0) return true;
-                 return this.sentPhotos.length >= this.requiredPhotosBeforeStart;
+                 return this.preStartPhotos.length >= this.requiredPhotosBeforeStart;
                },
                // Track whether user has sent NEW content in this session
                // true = user has new content ready to submit (show Done button)
                // false = no new content yet (hide Done button)
                @php
                  $showDoneInitially = false;
-                 if ($sub && $sub->status !== 'completed') {
+                 if ($sub && $sub->status !== 'completed' && $hasStarted) {
+                   // Only count photos uploaded AFTER the task was started
+                   $startTime = $sub->started_at;
+                   $postStartFiles = $subFiles->filter(fn($f) => $f->created_at && $startTime && $f->created_at->gt($startTime));
                    $lastRevertOrSubmit = $sub->logs->whereIn('action', ['submitted','updated','reverted'])->sortByDesc('created_at')->first();
                    if (!$lastRevertOrSubmit) {
-                     // Never submitted or reverted - if has content, show Done
-                     $showDoneInitially = ($subFiles->count() > 0 || $sub->logs->where('action', 'note_sent')->count() > 0);
+                     // Never submitted or reverted - if has post-start content, show Done
+                     $showDoneInitially = ($postStartFiles->count() > 0 || $sub->logs->where('action', 'note_sent')->filter(fn($l) => $l->created_at && $startTime && $l->created_at->gt($startTime))->count() > 0);
                    } elseif ($lastRevertOrSubmit->action === 'reverted') {
                      // Was reverted - check if new content sent AFTER the revert
                      $revertTime = $lastRevertOrSubmit->created_at ?? now();
-                     $newPhotos = $subFiles->filter(fn($f) => $f->created_at && $f->created_at->gt($revertTime))->count();
+                     $newPhotos = $postStartFiles->filter(fn($f) => $f->created_at->gt($revertTime))->count();
                      $newNotes = $sub->logs->where('action', 'note_sent')->filter(fn($l) => $l->created_at && $l->created_at->gt($revertTime))->count();
                      $showDoneInitially = ($newPhotos > 0 || $newNotes > 0);
                    }
@@ -673,7 +689,8 @@
                get requirementsMet() {
                  if (!this.taskStarted) return false;
                  if (!this.newContentSent) return false;
-                 const photoCount = this.sentPhotos.length;
+                 // Only count photos uploaded AFTER start for the Done requirement
+                 const photoCount = this.postStartPhotos.length;
                  const hasEnoughPhotos = photoCount >= this.requiredPhotos;
                  const hasNotes = this.sentNotes.length > 0;
                  switch (this.taskType) {
@@ -735,6 +752,7 @@
                        this.taskStarted = true;
                        this.startedAt = data.sent_at;
                        this.startedBy = data.sent_by;
+                       this.startedAtTs = Math.floor(Date.now()/1000);
                      }
                      this.$nextTick(() => {
                        const chatArea = this.$refs.chatArea{{ $task->id }};
@@ -875,11 +893,11 @@
                     <p class="text-xs text-orange-600 mb-3">You need to upload <span class="font-bold text-orange-800" x-text="requiredPhotosBeforeStart"></span> photo(s) before you can start this task</p>
                     <div class="flex items-center justify-center gap-2 mb-2">
                       <div class="flex-1 bg-orange-200 rounded-full h-3 overflow-hidden max-w-[200px]">
-                        <div class="bg-orange-500 h-full rounded-full transition-all duration-300" :style="'width:' + Math.min(100, (sentPhotos.length / requiredPhotosBeforeStart) * 100) + '%'"></div>
+                        <div class="bg-orange-500 h-full rounded-full transition-all duration-300" :style="'width:' + Math.min(100, (preStartPhotos.length / requiredPhotosBeforeStart) * 100) + '%'"></div>
                       </div>
-                      <span class="text-sm font-bold text-orange-700 whitespace-nowrap" x-text="sentPhotos.length + ' / ' + requiredPhotosBeforeStart"></span>
+                      <span class="text-sm font-bold text-orange-700 whitespace-nowrap" x-text="preStartPhotos.length + ' / ' + requiredPhotosBeforeStart"></span>
                     </div>
-                    <p class="text-xs text-orange-500 font-medium" x-text="(requiredPhotosBeforeStart - sentPhotos.length) + ' more photo(s) needed'"></p>
+                    <p class="text-xs text-orange-500 font-medium" x-text="(requiredPhotosBeforeStart - preStartPhotos.length) + ' more photo(s) needed'"></p>
                   </div>
                 </div>
               </template>
@@ -998,9 +1016,9 @@
             <div class="flex-shrink-0 bg-blue-50 border-t border-blue-200 px-4 py-2">
               <div class="max-w-lg mx-auto flex items-center gap-2">
                 <div class="flex-1 bg-blue-200 rounded-full h-2 overflow-hidden">
-                  <div class="bg-blue-500 h-full rounded-full transition-all duration-300" :style="'width:' + Math.min(100, (sentPhotos.length / requiredPhotos) * 100) + '%'"></div>
+                  <div class="bg-blue-500 h-full rounded-full transition-all duration-300" :style="'width:' + Math.min(100, (postStartPhotos.length / requiredPhotos) * 100) + '%'"></div>
                 </div>
-                <span class="text-xs font-medium text-blue-600 whitespace-nowrap" x-text="'📸 ' + sentPhotos.length + '/' + requiredPhotos + ' photos'"></span>
+                <span class="text-xs font-medium text-blue-600 whitespace-nowrap" x-text="'📸 ' + postStartPhotos.length + '/' + requiredPhotos + ' photos'"></span>
               </div>
             </div>
           </template>
