@@ -2,335 +2,226 @@
   <x-slot name="heading">Users</x-slot>
   <x-slot name="title">Users</x-slot>
 
-  <div class="p-4 max-w-4xl mx-auto space-y-4 mt-16" x-data="{ filterRole: '' }">
+  <div class="p-4 max-w-5xl mx-auto space-y-4 mt-16" x-data="{ filterRole: '', showAdd: false }">
 
     {{-- Header --}}
     <div class="flex items-center justify-between flex-wrap gap-2">
       <div>
         <h1 class="text-xl font-bold text-gray-800">Users</h1>
-        <p class="text-sm text-gray-500">Manage user accounts and assignments.</p>
+        <p class="text-sm text-gray-500">{{ $users->count() }} total users</p>
       </div>
       <div class="flex items-center gap-2">
+        <button @click="showAdd = !showAdd"
+                class="text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition"
+                x-text="showAdd ? '✕ Close' : '+ Add User'">
+        </button>
         <a href="{{ route('admin.roles') }}"
            class="text-sm px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-700 font-medium">
           <i class="fa-solid fa-shield-halved mr-1"></i> Roles
-        </a>
-        <a href="{{ route('checklist.conversations') }}"
-           class="text-sm px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 text-gray-700">
-          ← Checklist
         </a>
       </div>
     </div>
 
     {{-- Alerts --}}
     @if(session('success'))
-      <div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl text-sm">✓ {{ session('success') }}</div>
+      <div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl text-sm">{{ session('success') }}</div>
     @endif
     @if(session('error'))
       <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl text-sm">{{ session('error') }}</div>
     @endif
     @if($errors->any())
       <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl text-sm">
-        @foreach($errors->all() as $e)<div>• {{ $e }}</div>@endforeach
+        @foreach($errors->all() as $e)<div>{{ $e }}</div>@endforeach
       </div>
     @endif
 
-    {{-- Add User --}}
-    <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
-      <h2 class="font-semibold text-gray-800 text-sm mb-3">Add New User</h2>
+    {{-- Add User (Collapsible) --}}
+    <div x-show="showAdd" x-collapse x-cloak
+         class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+      <h2 class="font-semibold text-blue-800 text-sm mb-3"><i class="fa-solid fa-user-plus mr-1"></i> Add New User</h2>
       <form method="POST" action="{{ route('admin.store-user') }}">
         @csrf
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
-            <label class="block text-xs text-gray-500 mb-1">Full Name</label>
+            <label class="block text-xs text-blue-700 font-medium mb-1">Full Name *</label>
             <input type="text" name="name" required placeholder="Juan Dela Cruz"
-                   class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                   class="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
           </div>
           <div>
-            <label class="block text-xs text-gray-500 mb-1">Username <span class="text-gray-400">(for login)</span></label>
+            <label class="block text-xs text-blue-700 font-medium mb-1">Username <span class="text-blue-400">(for login)</span></label>
             <input type="text" name="username" placeholder="juan.delacruz"
-                   class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                   class="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
           </div>
           <div>
-            <label class="block text-xs text-gray-500 mb-1">Email</label>
+            <label class="block text-xs text-blue-700 font-medium mb-1">Email *</label>
             <input type="email" name="email" required placeholder="juan@example.com"
-                   class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                   class="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
           </div>
           <div>
-            <label class="block text-xs text-gray-500 mb-1">Password</label>
+            <label class="block text-xs text-blue-700 font-medium mb-1">Password *</label>
             <input type="text" name="password" required placeholder="Min 6 characters"
-                   class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                   class="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
           </div>
           <div>
-            <label class="block text-xs text-gray-500 mb-1">Role</label>
+            <label class="block text-xs text-blue-700 font-medium mb-1">Role *</label>
             <select name="role_id" required
-                    class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                    class="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
               <option value="">Select role...</option>
               @foreach($roles as $r)
                 <option value="{{ $r->id }}">{{ $r->name }}{{ $r->is_admin ? ' (Admin)' : '' }}</option>
               @endforeach
             </select>
           </div>
+          <div class="flex items-end">
+            <button type="submit" class="w-full px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 font-medium transition">
+              <i class="fa-solid fa-user-plus mr-1"></i> Add User
+            </button>
+          </div>
         </div>
-        <button type="submit" class="mt-3 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 font-medium">
-          <i class="fa-solid fa-user-plus mr-1"></i> Add User
-        </button>
       </form>
     </div>
 
     {{-- Filter --}}
-    <div class="bg-white border border-gray-200 rounded-xl shadow-sm px-4 py-3 flex items-center gap-3 flex-wrap">
-      <span class="text-sm text-gray-500 font-medium"><i class="fa-solid fa-filter mr-1"></i> Filter:</span>
+    <div class="flex items-center gap-3 flex-wrap">
       <select x-model="filterRole"
-              class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+              class="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 shadow-sm">
         <option value="">All Roles</option>
         @foreach($roles as $r)
           <option value="{{ $r->id }}">{{ $r->name }} ({{ $r->users_count }})</option>
         @endforeach
       </select>
       <button x-show="filterRole" @click="filterRole = ''" x-cloak
-              class="text-xs text-red-500 hover:text-red-700 font-medium">
-        <i class="fa-solid fa-xmark mr-0.5"></i> Clear
+              class="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded border border-red-200 hover:bg-red-50 transition">
+        <i class="fa-solid fa-xmark mr-0.5"></i> Clear Filter
       </button>
-      <span class="ml-auto text-xs text-gray-400">
-        <span x-text="document.querySelectorAll('[data-user-card]:not([style*=none])').length || {{ $users->count() }}"></span> users
-      </span>
     </div>
 
-    {{-- User List (Desktop Table) --}}
-    <div class="hidden md:block bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="bg-gray-50 border-b border-gray-200 text-left text-xs text-gray-500 uppercase tracking-wide">
-            <th class="px-4 py-3">Name</th>
-            <th class="px-4 py-3">Username</th>
-            <th class="px-4 py-3">Email</th>
-            <th class="px-4 py-3">Password</th>
-            <th class="px-4 py-3">Role</th>
-            <th class="px-4 py-3">Status</th>
-            <th class="px-4 py-3 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100">
-          @foreach($users as $user)
-            <tr x-data="{ editing: false, showPw: false }"
-                data-user-card data-role-id="{{ $user->role_id }}"
-                x-show="!filterRole || filterRole == '{{ $user->role_id }}'"
-                class="hover:bg-gray-50/50 transition">
+    {{-- User Cards --}}
+    <div class="space-y-2">
+      @foreach($users as $user)
+        <div x-data="{ editing: false, showPw: false }"
+             data-user-card data-role-id="{{ $user->role_id }}"
+             x-show="!filterRole || filterRole == '{{ $user->role_id }}'"
+             class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden transition-all"
+             :class="editing ? 'ring-2 ring-blue-300' : 'hover:shadow-md'">
 
-              {{-- View Mode --}}
-              <template x-if="!editing">
-                <td class="px-4 py-3">
-                  <div class="flex items-center gap-2">
-                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0
-                      {{ $user->role && $user->role->level >= 100 ? 'bg-amber-500' : ($user->role && $user->role->is_admin ? 'bg-purple-500' : 'bg-blue-500') }}">
-                      {{ strtoupper(substr($user->name, 0, 1)) }}
-                    </div>
-                    <span class="font-medium text-gray-800">{{ $user->name }}</span>
-                  </div>
-                </td>
-              </template>
-              <template x-if="!editing">
-                <td class="px-4 py-3">
-                  @if($user->username)
-                    <span class="text-gray-700 font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{{ $user->username }}</span>
-                  @else
-                    <span class="text-gray-300 text-xs">—</span>
-                  @endif
-                </td>
-              </template>
-              <template x-if="!editing">
-                <td class="px-4 py-3 text-gray-500">{{ $user->email }}</td>
-              </template>
-              <template x-if="!editing">
-                <td class="px-4 py-3">
-                  <div class="flex items-center gap-1">
-                    <span class="text-gray-400 font-mono text-xs" x-text="showPw ? '{{ $user->plain_password ?? '(hidden)' }}' : '••••••'"></span>
-                    @if($user->plain_password)
-                      <button type="button" @click="showPw = !showPw" class="text-gray-400 hover:text-gray-600 text-xs" x-text="showPw ? '🙈' : '👁'">👁</button>
-                    @endif
-                  </div>
-                </td>
-              </template>
-              <template x-if="!editing">
-                <td class="px-4 py-3">
+          {{-- View Mode --}}
+          <div x-show="!editing" class="p-4">
+            <div class="flex items-start gap-3">
+              {{-- Avatar --}}
+              <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0
+                {{ $user->role && $user->role->level >= 100 ? 'bg-amber-500' : ($user->role && $user->role->is_admin ? 'bg-purple-500' : 'bg-blue-500') }}">
+                {{ strtoupper(substr($user->name, 0, 1)) }}
+              </div>
+
+              {{-- Info --}}
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h3 class="font-semibold text-gray-800 text-sm">{{ $user->name }}</h3>
                   <span class="text-xs px-2 py-0.5 rounded-full font-medium
                     {{ $user->role && $user->role->level >= 100 ? 'bg-amber-100 text-amber-700' : ($user->role && $user->role->is_admin ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600') }}">
                     {{ $user->role?->name ?? 'No Role' }}
                   </span>
-                </td>
-              </template>
-              <template x-if="!editing">
-                <td class="px-4 py-3">
                   @if($user->is_active)
-                    <span class="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">Active</span>
+                    <span class="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" title="Active"></span>
                   @else
-                    <span class="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500 font-medium">Inactive</span>
+                    <span class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-500 font-medium">Inactive</span>
                   @endif
-                </td>
-              </template>
-              <template x-if="!editing">
-                <td class="px-4 py-3">
-                  <div class="flex items-center gap-1 justify-end">
-                    <button @click="editing = true" class="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition">Edit</button>
-                    <form method="POST" action="{{ route('admin.toggle-user', $user) }}">
-                      @csrf @method('PATCH')
-                      <button type="submit" class="text-xs px-2.5 py-1.5 rounded-lg border {{ $user->is_active ? 'border-amber-200 text-amber-500 hover:bg-amber-50' : 'border-green-200 text-green-500 hover:bg-green-50' }} transition">
-                        {{ $user->is_active ? 'Disable' : 'Enable' }}
-                      </button>
-                    </form>
-                    @if($user->id !== auth()->id())
-                      <form method="POST" action="{{ route('admin.destroy-user', $user) }}" onsubmit="return confirm('Delete user \'{{ $user->name }}\'?')">
-                        @csrf @method('DELETE')
-                        <button type="submit" class="text-xs px-2.5 py-1.5 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 transition">Delete</button>
-                      </form>
-                    @endif
-                  </div>
-                </td>
-              </template>
-
-              {{-- Edit Mode --}}
-              <template x-if="editing">
-                <td colspan="7" class="px-4 py-4">
-                  <form method="POST" action="{{ route('admin.update-user', $user) }}" id="edit-user-{{ $user->id }}">
-                    @csrf @method('PATCH')
-                    <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                      <div>
-                        <label class="block text-xs text-gray-500 mb-1">Name</label>
-                        <input type="text" name="name" value="{{ $user->name }}" required
-                               class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
-                      </div>
-                      <div>
-                        <label class="block text-xs text-gray-500 mb-1">Username</label>
-                        <input type="text" name="username" value="{{ $user->username }}" placeholder="username"
-                               class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
-                      </div>
-                      <div>
-                        <label class="block text-xs text-gray-500 mb-1">Email</label>
-                        <input type="email" name="email" value="{{ $user->email }}" required
-                               class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
-                      </div>
-                      <div>
-                        <label class="block text-xs text-gray-500 mb-1">Password <span class="text-gray-400">(blank = keep)</span></label>
-                        <input type="text" name="password" placeholder="New password"
-                               class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
-                      </div>
-                      <div>
-                        <label class="block text-xs text-gray-500 mb-1">Role</label>
-                        <select name="role_id" required
-                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
-                          @foreach($roles as $r)
-                            <option value="{{ $r->id }}" {{ $user->role_id == $r->id ? 'selected' : '' }}>{{ $r->name }}</option>
-                          @endforeach
-                        </select>
-                      </div>
-                    </div>
-                    <div class="flex items-center gap-2 mt-3">
-                      <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 font-medium">
-                        <i class="fa-solid fa-check mr-1"></i> Save
-                      </button>
-                      <button type="button" @click="editing = false" class="px-4 py-2 text-sm text-gray-500 rounded-lg border border-gray-200 hover:bg-gray-50">
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
-                </td>
-              </template>
-            </tr>
-          @endforeach
-        </tbody>
-      </table>
-    </div>
-
-    {{-- User List (Mobile Cards) --}}
-    <div class="md:hidden space-y-2">
-      @foreach($users as $user)
-        <div class="border border-gray-200 rounded-xl bg-white p-3 space-y-2"
-             x-data="{ editing: false, showPw: false }"
-             data-user-card data-role-id="{{ $user->role_id }}"
-             x-show="!filterRole || filterRole == '{{ $user->role_id }}'">
-
-          <template x-if="!editing">
-            <div>
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                  <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0
-                    {{ $user->role && $user->role->level >= 100 ? 'bg-amber-500' : ($user->role && $user->role->is_admin ? 'bg-purple-500' : 'bg-blue-500') }}">
-                    {{ strtoupper(substr($user->name, 0, 1)) }}
-                  </div>
-                  <div>
-                    <p class="text-sm font-semibold text-gray-800">{{ $user->name }}</p>
-                    @if($user->username)
-                      <p class="text-xs text-gray-500 font-mono">{{ $user->username }}</p>
-                    @endif
-                    <p class="text-xs text-gray-400">{{ $user->email }}</p>
-                  </div>
                 </div>
-                <div class="flex items-center gap-1.5">
-                  @if($user->is_active)
-                    <span class="w-2 h-2 rounded-full bg-green-400"></span>
-                  @else
-                    <span class="w-2 h-2 rounded-full bg-red-400"></span>
+
+                <div class="flex items-center gap-4 mt-1 flex-wrap text-xs text-gray-500">
+                  @if($user->username)
+                    <span class="font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{{ $user->username }}</span>
                   @endif
+                  <span>{{ $user->email }}</span>
+                  <span class="flex items-center gap-1">
+                    <span class="font-mono" x-text="showPw ? '{{ $user->plain_password ?? '(hidden)' }}' : '••••••'"></span>
+                    @if($user->plain_password)
+                      <button type="button" @click="showPw = !showPw" class="text-gray-400 hover:text-gray-600" x-text="showPw ? '🙈' : '👁'">👁</button>
+                    @endif
+                  </span>
                 </div>
               </div>
 
-              <div class="flex items-center gap-2 mt-2">
-                <span class="text-xs px-2 py-0.5 rounded-full font-medium
-                  {{ $user->role && $user->role->level >= 100 ? 'bg-amber-100 text-amber-700' : ($user->role && $user->role->is_admin ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600') }}">
-                  {{ $user->role?->name ?? 'No Role' }}
-                </span>
-                <div class="flex items-center gap-1 text-xs">
-                  <span class="text-gray-400 font-mono" x-text="showPw ? '{{ $user->plain_password ?? '(hidden)' }}' : '•••••••'"></span>
-                  @if($user->plain_password)
-                    <button type="button" @click="showPw = !showPw" class="text-gray-400 hover:text-gray-600" x-text="showPw ? '🙈' : '👁'">👁</button>
-                  @endif
-                </div>
-              </div>
-
-              <div class="flex items-center gap-1 mt-2 pt-2 border-t border-gray-100">
-                <button @click="editing = true" class="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition flex-1">Edit</button>
-                <form method="POST" action="{{ route('admin.toggle-user', $user) }}" class="flex-1">
+              {{-- Actions --}}
+              <div class="flex items-center gap-1 flex-shrink-0">
+                <button @click="editing = true"
+                        class="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition font-medium">
+                  <i class="fa-solid fa-pen-to-square mr-0.5"></i> Edit
+                </button>
+                <form method="POST" action="{{ route('admin.toggle-user', $user) }}">
                   @csrf @method('PATCH')
-                  <button type="submit" class="w-full text-xs px-2.5 py-1.5 rounded-lg border {{ $user->is_active ? 'border-amber-200 text-amber-500 hover:bg-amber-50' : 'border-green-200 text-green-500 hover:bg-green-50' }} transition">
+                  <button type="submit"
+                          class="text-xs px-3 py-1.5 rounded-lg border transition font-medium
+                            {{ $user->is_active ? 'border-amber-200 text-amber-600 hover:bg-amber-50' : 'border-green-200 text-green-600 hover:bg-green-50' }}">
                     {{ $user->is_active ? 'Disable' : 'Enable' }}
                   </button>
                 </form>
                 @if($user->id !== auth()->id())
-                  <form method="POST" action="{{ route('admin.destroy-user', $user) }}" onsubmit="return confirm('Delete user?')" class="flex-1">
+                  <form method="POST" action="{{ route('admin.destroy-user', $user) }}" onsubmit="return confirm('Delete user \'{{ $user->name }}\'? This cannot be undone.')">
                     @csrf @method('DELETE')
-                    <button type="submit" class="w-full text-xs px-2.5 py-1.5 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 transition">Delete</button>
+                    <button type="submit" class="text-xs px-2.5 py-1.5 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600 transition">
+                      <i class="fa-solid fa-trash-can"></i>
+                    </button>
                   </form>
                 @endif
               </div>
             </div>
-          </template>
+          </div>
 
-          <template x-if="editing">
-            <form method="POST" action="{{ route('admin.update-user', $user) }}" class="space-y-2">
+          {{-- Edit Mode --}}
+          <div x-show="editing" x-cloak class="p-4 bg-gray-50 border-t border-gray-100">
+            <form method="POST" action="{{ route('admin.update-user', $user) }}">
               @csrf @method('PATCH')
-              <input type="text" name="name" value="{{ $user->name }}" required placeholder="Name"
-                     class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
-              <input type="text" name="username" value="{{ $user->username }}" placeholder="Username (for login)"
-                     class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
-              <input type="email" name="email" value="{{ $user->email }}" required placeholder="Email"
-                     class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
-              <input type="text" name="password" placeholder="New password (leave blank to keep)"
-                     class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
-              <select name="role_id" required
-                      class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
-                @foreach($roles as $r)
-                  <option value="{{ $r->id }}" {{ $user->role_id == $r->id ? 'selected' : '' }}>{{ $r->name }}</option>
-                @endforeach
-              </select>
-              <div class="flex gap-2">
-                <button type="submit" class="flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 font-medium">Save</button>
-                <button type="button" @click="editing = false" class="flex-1 px-3 py-2 text-sm text-gray-500 rounded-lg border border-gray-200 hover:bg-gray-50">Cancel</button>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div>
+                  <label class="block text-xs text-gray-500 font-medium mb-1">Name</label>
+                  <input type="text" name="name" value="{{ $user->name }}" required
+                         class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-500 font-medium mb-1">Username</label>
+                  <input type="text" name="username" value="{{ $user->username }}" placeholder="username"
+                         class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-500 font-medium mb-1">Email</label>
+                  <input type="email" name="email" value="{{ $user->email }}" required
+                         class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-500 font-medium mb-1">New Password <span class="text-gray-400">(blank = keep)</span></label>
+                  <input type="text" name="password" placeholder="Leave blank to keep current"
+                         class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-500 font-medium mb-1">Role</label>
+                  <select name="role_id" required
+                          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
+                    @foreach($roles as $r)
+                      <option value="{{ $r->id }}" {{ $user->role_id == $r->id ? 'selected' : '' }}>{{ $r->name }}{{ $r->is_admin ? ' (Admin)' : '' }}</option>
+                    @endforeach
+                  </select>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 mt-3">
+                <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 font-medium transition">
+                  <i class="fa-solid fa-check mr-1"></i> Save Changes
+                </button>
+                <button type="button" @click="editing = false" class="px-4 py-2 text-sm text-gray-500 rounded-lg border border-gray-200 hover:bg-white transition">
+                  Cancel
+                </button>
               </div>
             </form>
-          </template>
+          </div>
         </div>
       @endforeach
+    </div>
+
+    {{-- Empty state --}}
+    <div x-show="document.querySelectorAll('[data-user-card]:not([style*=none])').length === 0" x-cloak
+         class="text-center py-8 text-gray-400 text-sm">
+      No users found for this filter.
     </div>
 
   </div>
