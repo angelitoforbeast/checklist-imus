@@ -53,6 +53,7 @@ Route::middleware(['web','auth'])->prefix('checklist')->name('checklist.')->grou
         Route::post('/tasks/bulk-assign', [ChecklistController::class, 'bulkAssign'])->name('bulk-assign');
         Route::post('/tasks/bulk-delete', [ChecklistController::class, 'bulkDelete'])->name('bulk-delete');
         Route::post('/submission/{submission}/revert', [ChecklistController::class, 'revertSubmission'])->name('revert-submission');
+        Route::post('/submission/{submission}/reset', [ChecklistController::class, 'resetSubmission'])->name('reset-submission');
     Route::post('/task/{task}/send-comment', [ChecklistController::class, 'sendComment'])->name('send-comment');
     });
 

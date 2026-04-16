@@ -840,6 +840,49 @@ class ChecklistController extends Controller
     }
 
     // =========================================================================
+    // RESET SUBMISSION (Admin only — full reset back to start)
+    // =========================================================================
+
+    public function resetSubmission(ChecklistSubmission $submission)
+    {
+        if (!Auth::user()?->isAdmin()) {
+            abort(403);
+        }
+
+        // Log the reset
+        $submission->logs()->create([
+            'user_id' => Auth::id(),
+            'action' => 'reset',
+            'notes_snapshot' => 'Full reset by admin',
+            'file_count' => $submission->files->count(),
+        ]);
+
+        // Delete all uploaded files from storage and database
+        foreach ($submission->files as $file) {
+            Storage::disk('public')->delete($file->file_path);
+            $file->delete();
+        }
+
+        // Delete all logs (notes, reverts, submits, etc.) to fully clean the conversation
+        $submission->logs()->delete();
+
+        // Reset submission state completely
+        $submission->status = 'pending';
+        $submission->started_at = null;
+        $submission->notes = null;
+        $submission->file_path = null;
+        $submission->file_original_name = null;
+        $submission->file_mime = null;
+        $submission->save();
+
+        if (request()->ajax()) {
+            return response()->json(['success' => true]);
+        }
+
+        return back()->with('success', 'Task fully reset. User needs to start from scratch.');
+    }
+
+    // =========================================================================
     // ADMIN COMMENT
     // =========================================================================
 
