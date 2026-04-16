@@ -240,6 +240,14 @@
                  class="w-32 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
         </div>
 
+        {{-- Required Photos Before Start (only for photo-related types) --}}
+        <div x-show="['photo','photo_note','both'].includes(taskType)" x-transition>
+          <label class="text-xs font-medium text-gray-600 mb-1 block">Required Photos Before Start <span class="text-gray-400">(0 = no requirement)</span></label>
+          <input type="number" name="required_photos_before_start" min="0" max="50" value="{{ old('required_photos_before_start', 0) }}"
+                 class="w-32 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+          <p class="text-[10px] text-gray-400 mt-1">User must upload this many photos before the Start button appears</p>
+        </div>
+
         {{-- Announcement info box --}}
         <div x-show="taskType === 'announcement'" x-transition class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
           <p class="text-xs font-semibold text-amber-700 flex items-center gap-1.5 mb-1">📢 Announcement Mode</p>
@@ -800,6 +808,15 @@
                 <label class="text-xs font-medium text-gray-600 mb-1 block">Required Photos <span class="text-gray-400">(minimum before Done button appears)</span></label>
                 <input type="number" name="required_photos" x-model="editRequiredPhotos" min="1" max="50"
                        class="w-32 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+              </div>
+
+              {{-- Required Photos Before Start (edit) --}}
+              <div x-show="['photo','photo_note','both'].includes(editType)" x-transition>
+                <label class="text-xs font-medium text-gray-600 mb-1 block">Required Photos Before Start <span class="text-gray-400">(0 = no requirement)</span></label>
+                <input type="number" name="required_photos_before_start" min="0" max="50"
+                       value="{{ $t->required_photos_before_start ?? 0 }}"
+                       class="w-32 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+                <p class="text-[10px] text-gray-400 mt-1">User must upload this many photos before the Start button appears</p>
               </div>
 
               {{-- Announcement info box (edit) --}}

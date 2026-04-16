@@ -814,17 +814,29 @@ class ChecklistController extends Controller
             abort(403);
         }
 
-        $submission->status = 'pending';
-        $submission->save();
+        // Log the revert BEFORE deleting files (capture current file count)
+        $fileCount = $submission->files->count();
 
         $submission->logs()->create([
             'user_id' => Auth::id(),
             'action' => 'reverted',
             'notes_snapshot' => $submission->notes,
-            'file_count' => $submission->files->count(),
+            'file_count' => $fileCount,
         ]);
 
-        return back()->with('success', 'Task reverted to pending. User needs to re-submit.');
+        // Delete all uploaded files from storage and database so photo count resets to 0
+        foreach ($submission->files as $file) {
+            Storage::disk('public')->delete($file->file_path);
+            $file->delete();
+        }
+
+        // Reset submission state
+        $submission->status = 'pending';
+        $submission->started_at = null;
+        $submission->notes = null;
+        $submission->save();
+
+        return back()->with('success', 'Task reverted to pending. All photos cleared — user needs to re-upload and re-submit.');
     }
 
     // =========================================================================
@@ -882,6 +894,7 @@ class ChecklistController extends Controller
             'instructions'      => 'nullable|string|max:5000',
             'type'              => 'required|in:photo,note,any,both,photo_note,announcement',
             'required_photos'   => 'nullable|integer|min:1|max:50',
+            'required_photos_before_start' => 'nullable|integer|min:0|max:50',
             'ai_prompt'         => 'nullable|string|max:2000',
             'approval_prompt'   => 'nullable|string|max:2000',
             'task_time'         => 'nullable|date_format:H:i',
@@ -906,8 +919,10 @@ class ChecklistController extends Controller
         // Default required_photos to 1 for photo-related types
         if (in_array($validated['type'] ?? '', ['photo', 'photo_note', 'both'])) {
             $validated['required_photos'] = max(1, (int)($validated['required_photos'] ?? 1));
+            $validated['required_photos_before_start'] = max(0, (int)($validated['required_photos_before_start'] ?? 0));
         } else {
             $validated['required_photos'] = 1;
+            $validated['required_photos_before_start'] = 0;
         }
 
         $imagePath = null;
@@ -955,6 +970,7 @@ class ChecklistController extends Controller
             'instructions'      => 'nullable|string|max:5000',
             'type'              => 'required|in:photo,note,any,both,photo_note,announcement',
             'required_photos'   => 'nullable|integer|min:1|max:50',
+            'required_photos_before_start' => 'nullable|integer|min:0|max:50',
             'is_active'         => 'boolean',
             'ai_prompt'         => 'nullable|string|max:2000',
             'approval_prompt'   => 'nullable|string|max:2000',
@@ -979,8 +995,10 @@ class ChecklistController extends Controller
         // Default required_photos to 1 for photo-related types
         if (in_array($validated['type'] ?? '', ['photo', 'photo_note', 'both'])) {
             $validated['required_photos'] = max(1, (int)($validated['required_photos'] ?? 1));
+            $validated['required_photos_before_start'] = max(0, (int)($validated['required_photos_before_start'] ?? 0));
         } else {
             $validated['required_photos'] = 1;
+            $validated['required_photos_before_start'] = 0;
         }
 
         if ($request->hasFile('reference_image')) {

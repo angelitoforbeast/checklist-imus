@@ -621,8 +621,8 @@
                        this.sentPhotos.push({ url: data.url, name: data.name, time: data.uploaded_at, ts: Math.floor(Date.now()/1000), by: data.uploaded_by, isVideo: isVid });
                        this.newContentSent = true;
                        this.taskCompleted = false;
-                       // Auto-start task if not started yet
-                       if (!this.taskStarted) {
+                       // Auto-start task if not started yet (only if pre-start photo requirement is met)
+                       if (!this.taskStarted && this.preStartPhotosMet) {
                          this.taskStarted = true;
                          this.startedAt = data.uploaded_at;
                          this.startedBy = data.uploaded_by;
@@ -644,6 +644,11 @@
                taskCompleted: false,
                taskType: '{{ $task->type }}',
                requiredPhotos: {{ $task->required_photos ?? 1 }},
+               requiredPhotosBeforeStart: {{ $task->required_photos_before_start ?? 0 }},
+               get preStartPhotosMet() {
+                 if (this.requiredPhotosBeforeStart <= 0) return true;
+                 return this.sentPhotos.length >= this.requiredPhotosBeforeStart;
+               },
                // Track whether user has sent NEW content in this session
                // true = user has new content ready to submit (show Done button)
                // false = no new content yet (hide Done button)
@@ -725,8 +730,8 @@
                      this.noteText = '';
                      this.newContentSent = true;
                      this.taskCompleted = false;
-                     // Auto-start task if not started yet
-                     if (!this.taskStarted) {
+                     // Auto-start task if not started yet (only if pre-start photo requirement is met)
+                     if (!this.taskStarted && this.preStartPhotosMet) {
                        this.taskStarted = true;
                        this.startedAt = data.sent_at;
                        this.startedBy = data.sent_by;
@@ -859,8 +864,23 @@
               </div>
               @endif
 
-              {{-- START BUTTON (shown when task not yet started) --}}
-              <template x-if="!taskStarted">
+              {{-- PRE-START PHOTO PROGRESS (shown when photos needed before start) --}}
+              <template x-if="!taskStarted && requiredPhotosBeforeStart > 0 && !preStartPhotosMet">
+                <div class="flex justify-center py-4">
+                  <div class="text-center">
+                    <div class="flex items-center justify-center gap-2 mb-2">
+                      <div class="flex-1 bg-orange-200 rounded-full h-2 overflow-hidden w-40">
+                        <div class="bg-orange-500 h-full rounded-full transition-all duration-300" :style="'width:' + Math.min(100, (sentPhotos.length / requiredPhotosBeforeStart) * 100) + '%'"></div>
+                      </div>
+                      <span class="text-xs font-medium text-orange-600 whitespace-nowrap" x-text="'📸 ' + sentPhotos.length + '/' + requiredPhotosBeforeStart"></span>
+                    </div>
+                    <p class="text-xs text-gray-500">Upload <span class="font-semibold" x-text="requiredPhotosBeforeStart - sentPhotos.length"></span> more photo(s) to unlock Start</p>
+                  </div>
+                </div>
+              </template>
+
+              {{-- START BUTTON (shown when task not yet started AND pre-start photos met) --}}
+              <template x-if="!taskStarted && preStartPhotosMet">
                 <div class="flex justify-center py-4">
                   <button @click="startThisTask()"
                           class="px-8 py-3 rounded-2xl font-bold text-base text-white transition-all duration-200 active:scale-[0.98] shadow-lg"
@@ -1079,9 +1099,42 @@
           </div>
 
           {{-- Not started message at bottom --}}
-          <template x-if="!taskStarted">
+          <template x-if="!taskStarted && preStartPhotosMet">
             <div class="flex-shrink-0 border-t border-gray-200 bg-gray-50 px-4 py-4 text-center">
               <p class="text-sm text-gray-400">Tap <strong>"Start Task"</strong> to begin</p>
+            </div>
+          </template>
+
+          {{-- Pre-start upload bar (shown when photos needed before start) --}}
+          <template x-if="!taskStarted && !preStartPhotosMet">
+            <div class="flex-shrink-0 border-t border-gray-200 bg-white" style="padding-bottom: env(safe-area-inset-bottom, 0px);">
+              <div class="max-w-lg mx-auto px-3 py-2">
+                <div class="flex items-end gap-2">
+                  @if(in_array($task->type, ['photo', 'any', 'both', 'photo_note']))
+                    <button type="button" @click="$refs.preStartCam{{ $task->id }}.click()"
+                            :disabled="uploading"
+                            class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center active:bg-orange-50 transition"
+                            :style="uploading ? 'color:#9ca3af' : 'color:#ea580c'">
+                      <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 15.2a3.2 3.2 0 100-6.4 3.2 3.2 0 000 6.4z"/><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>
+                    </button>
+                    <button type="button" @click="$refs.preStartGal{{ $task->id }}.click()"
+                            :disabled="uploading"
+                            class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center active:bg-orange-50 transition"
+                            :style="uploading ? 'color:#9ca3af' : 'color:#ea580c'">
+                      <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                    </button>
+                    <input type="file" x-ref="preStartCam{{ $task->id }}" class="hidden"
+                           accept="image/*,video/*" capture="environment"
+                           @change="autoUpload($event.target.files); $event.target.value='';">
+                    <input type="file" x-ref="preStartGal{{ $task->id }}" class="hidden"
+                           multiple accept="image/*,video/*"
+                           @change="autoUpload($event.target.files); $event.target.value='';">
+                  @endif
+                  <div class="flex-1 text-center">
+                    <p class="text-xs text-orange-600 font-medium" x-text="'📸 Upload ' + (requiredPhotosBeforeStart - sentPhotos.length) + ' more photo(s)'"></p>
+                  </div>
+                </div>
+              </div>
             </div>
           </template>
 

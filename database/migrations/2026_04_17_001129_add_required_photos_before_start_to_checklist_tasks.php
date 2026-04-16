@@ -2,20 +2,17 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\DB;
 return new class extends Migration {
     public function up(): void
     {
-        DB::statement('ALTER TABLE checklist_tasks MODIFY description TEXT NULL');
         Schema::table('checklist_tasks', function (Blueprint $table) {
-            $table->text('instructions')->nullable()->after('description');
+            $table->unsignedInteger('required_photos_before_start')->default(0)->after('required_photos');
         });
     }
     public function down(): void
     {
         Schema::table('checklist_tasks', function (Blueprint $table) {
-            $table->dropColumn('instructions');
+            $table->dropColumn('required_photos_before_start');
         });
-        DB::statement('ALTER TABLE checklist_tasks MODIFY description VARCHAR(255) NULL');
     }
 };
