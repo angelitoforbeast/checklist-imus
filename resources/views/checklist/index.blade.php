@@ -348,20 +348,34 @@
                   <div class="bg-white rounded-2xl rounded-tl-md px-5 py-4 shadow-sm border border-gray-100">
                     <h2 class="text-lg font-bold text-gray-800 mb-2">{{ $task->title }}</h2>
                     @if($task->description)
-                      <p class="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{{ $task->description }}</p>
+                      <p class="text-sm text-gray-700 font-semibold leading-relaxed whitespace-pre-line">{!! nl2br(e($task->description)) !!}</p>
                     @else
                       <p class="text-sm text-gray-400 italic">No additional details.</p>
-                    @endif
-                    @if($task->instructions)
-                      <div class="mt-3 pt-3 border-t border-gray-100">
-                        <p class="text-xs font-semibold text-gray-500 mb-1">📋 Instructions</p>
-                        <p class="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{{ $task->instructions }}</p>
-                      </div>
                     @endif
                   </div>
                   <p class="text-[10px] text-gray-400 mt-1 ml-1">Announcement</p>
                 </div>
               </div>
+
+              {{-- Instructions (collapsible) --}}
+              @if($task->instructions)
+              <div class="flex items-start gap-2" x-data="{ showInstructions: false }">
+                <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-amber-50 text-sm">📋</div>
+                <div class="flex-1">
+                  <button @click="showInstructions = !showInstructions"
+                          class="w-full bg-amber-50 border border-amber-200 rounded-2xl rounded-tl-md px-4 py-2.5 text-left hover:bg-amber-100 transition">
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs font-semibold text-amber-700">📋 Instructions</span>
+                      <svg class="w-4 h-4 text-amber-400 transition-transform" :class="showInstructions ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                    </div>
+                  </button>
+                  <div x-show="showInstructions" x-collapse x-cloak
+                       class="bg-amber-50 border border-t-0 border-amber-200 rounded-b-2xl px-4 py-3 -mt-2">
+                    <p class="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{!! nl2br(e($task->instructions)) !!}</p>
+                  </div>
+                </div>
+              </div>
+              @endif
 
               {{-- Acknowledged status --}}
               <template x-if="acknowledged">
@@ -805,23 +819,17 @@
           <div class="flex-1 overflow-y-auto bg-gray-50" x-ref="chatArea{{ $task->id }}">
             <div class="max-w-lg mx-auto px-4 py-4 space-y-4">
 
-              {{-- Task instruction bubble (left side) --}}
+              {{-- Task description bubble (left side) --}}
               <div class="flex items-start gap-2">
                 <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white text-sm font-bold" style="background-color:#1877F2">📋</div>
-                <div>
+                <div class="flex-1">
                   <div class="bg-gray-200 rounded-2xl rounded-tl-md px-4 py-2.5">
-                    <p class="text-sm text-gray-800 font-medium">{{ $task->title }}</p>
+                    <p class="text-sm text-gray-800 font-bold">{{ $task->title }}</p>
                     @if($task->description)
-                      <p class="text-xs text-gray-500 mt-1">{{ $task->description }}</p>
-                    @endif
-                    @if($task->instructions)
-                      <div class="mt-2 pt-2 border-t border-gray-300/50">
-                        <p class="text-xs font-semibold text-gray-600 mb-0.5">📋 Instructions</p>
-                        <p class="text-xs text-gray-500 whitespace-pre-line">{{ $task->instructions }}</p>
-                      </div>
+                      <p class="text-sm text-gray-700 font-semibold mt-1 leading-relaxed whitespace-pre-line">{!! nl2br(e($task->description)) !!}</p>
                     @endif
                     @if(in_array($task->type, ['photo', 'photo_note', 'both']))
-                      <p class="text-xs text-gray-500 mt-1">📸 Please send photo proof</p>
+                      <p class="text-xs text-gray-500 mt-2">📸 Please send photo proof</p>
                     @endif
                     @if(in_array($task->type, ['note', 'both']))
                       <p class="text-xs text-gray-500 mt-0.5">📝 Notes required</p>
@@ -830,6 +838,26 @@
                   <p class="text-[10px] text-gray-400 mt-1 ml-1">Task assigned</p>
                 </div>
               </div>
+
+              {{-- Instructions (collapsible, separate bubble) --}}
+              @if($task->instructions)
+              <div class="flex items-start gap-2" x-data="{ showInstructions: false }">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-blue-100 text-sm">📋</div>
+                <div class="flex-1">
+                  <button @click="showInstructions = !showInstructions"
+                          class="w-full bg-blue-50 border border-blue-200 rounded-2xl rounded-tl-md px-4 py-2.5 text-left hover:bg-blue-100 transition">
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs font-semibold text-blue-700">📋 Instructions</span>
+                      <svg class="w-4 h-4 text-blue-400 transition-transform" :class="showInstructions ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                    </div>
+                  </button>
+                  <div x-show="showInstructions" x-collapse x-cloak
+                       class="bg-blue-50 border border-t-0 border-blue-200 rounded-b-2xl px-4 py-3 -mt-2">
+                    <p class="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{!! nl2br(e($task->instructions)) !!}</p>
+                  </div>
+                </div>
+              </div>
+              @endif
 
               {{-- START BUTTON (shown when task not yet started) --}}
               <template x-if="!taskStarted">
