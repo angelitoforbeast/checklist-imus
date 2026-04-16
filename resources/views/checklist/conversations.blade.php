@@ -397,12 +397,32 @@
               @if($sub && $sub->user) · {{ $sub->user->name }} @endif
             </p>
           </div>
-          @if($done)
-            <form method="POST" action="{{ route('checklist.revert-submission', $sub) }}"
-                  onsubmit="return confirm('Revert to pending? User will need to re-submit.')" class="flex-shrink-0">
-              @csrf
-              <button type="submit" class="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full transition">↩ Revert</button>
-            </form>
+          @if($sub)
+            @if($done)
+              <form method="POST" action="{{ route('checklist.revert-submission', $sub) }}"
+                    onsubmit="return confirm('Revert to pending? User will need to re-submit.')" class="flex-shrink-0">
+                @csrf
+                <button type="submit" class="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full transition">↩ Revert</button>
+              </form>
+            @endif
+            <button type="button"
+                    x-data="{ resetting: false }"
+                    @click="if (confirm('Are you sure you want to RESET this task? This will delete ALL photos, notes, and logs. The user will need to start from scratch.')) {
+                      resetting = true;
+                      fetch('{{ route('checklist.reset-submission', $sub) }}', {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' }
+                      }).then(r => r.json()).then(d => {
+                        if (d.success) { window.location.reload(); }
+                        else { alert('Reset failed'); resetting = false; }
+                      }).catch(() => { alert('Reset failed'); resetting = false; });
+                    }"
+                    :disabled="resetting"
+                    class="flex-shrink-0 flex items-center gap-1 text-xs px-3 py-1.5 rounded-full transition-all active:scale-95"
+                    :class="resetting ? 'bg-gray-400 text-white' : 'bg-red-500/80 hover:bg-red-500 text-white'">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              <span x-text="resetting ? 'Resetting...' : 'Reset'"></span>
+            </button>
           @endif
         </div>
 
