@@ -47,6 +47,11 @@
                    class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
           </div>
           <div>
+            <label class="block text-xs text-gray-500 mb-1">Username <span class="text-gray-400">(for login)</span></label>
+            <input type="text" name="username" placeholder="juan.delacruz"
+                   class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+          </div>
+          <div>
             <label class="block text-xs text-gray-500 mb-1">Email</label>
             <input type="email" name="email" required placeholder="juan@example.com"
                    class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
@@ -98,6 +103,7 @@
         <thead>
           <tr class="bg-gray-50 border-b border-gray-200 text-left text-xs text-gray-500 uppercase tracking-wide">
             <th class="px-4 py-3">Name</th>
+            <th class="px-4 py-3">Username</th>
             <th class="px-4 py-3">Email</th>
             <th class="px-4 py-3">Password</th>
             <th class="px-4 py-3">Role</th>
@@ -122,6 +128,15 @@
                     </div>
                     <span class="font-medium text-gray-800">{{ $user->name }}</span>
                   </div>
+                </td>
+              </template>
+              <template x-if="!editing">
+                <td class="px-4 py-3">
+                  @if($user->username)
+                    <span class="text-gray-700 font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{{ $user->username }}</span>
+                  @else
+                    <span class="text-gray-300 text-xs">—</span>
+                  @endif
                 </td>
               </template>
               <template x-if="!editing">
@@ -176,13 +191,18 @@
 
               {{-- Edit Mode --}}
               <template x-if="editing">
-                <td colspan="6" class="px-4 py-4">
+                <td colspan="7" class="px-4 py-4">
                   <form method="POST" action="{{ route('admin.update-user', $user) }}" id="edit-user-{{ $user->id }}">
                     @csrf @method('PATCH')
-                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
                       <div>
                         <label class="block text-xs text-gray-500 mb-1">Name</label>
                         <input type="text" name="name" value="{{ $user->name }}" required
+                               class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                      </div>
+                      <div>
+                        <label class="block text-xs text-gray-500 mb-1">Username</label>
+                        <input type="text" name="username" value="{{ $user->username }}" placeholder="username"
                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
                       </div>
                       <div>
@@ -240,6 +260,9 @@
                   </div>
                   <div>
                     <p class="text-sm font-semibold text-gray-800">{{ $user->name }}</p>
+                    @if($user->username)
+                      <p class="text-xs text-gray-500 font-mono">{{ $user->username }}</p>
+                    @endif
                     <p class="text-xs text-gray-400">{{ $user->email }}</p>
                   </div>
                 </div>
@@ -287,6 +310,8 @@
             <form method="POST" action="{{ route('admin.update-user', $user) }}" class="space-y-2">
               @csrf @method('PATCH')
               <input type="text" name="name" value="{{ $user->name }}" required placeholder="Name"
+                     class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+              <input type="text" name="username" value="{{ $user->username }}" placeholder="Username (for login)"
                      class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
               <input type="email" name="email" value="{{ $user->email }}" required placeholder="Email"
                      class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">

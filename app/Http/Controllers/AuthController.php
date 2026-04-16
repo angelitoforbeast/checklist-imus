@@ -17,17 +17,28 @@ class AuthController extends Controller
 
     public function login(Request $request)
     {
-        $credentials = $request->validate([
-            'email' => 'required|email',
+        $request->validate([
+            'login'    => 'required|string',
             'password' => 'required',
         ]);
+
+        $login = $request->input('login');
+        $password = $request->input('password');
+
+        // Determine if login is email or username
+        $field = filter_var($login, FILTER_VALIDATE_EMAIL) ? 'email' : 'username';
+
+        $credentials = [
+            $field     => $login,
+            'password' => $password,
+        ];
 
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
             $request->session()->regenerate();
 
             if (!Auth::user()->is_active) {
                 Auth::logout();
-                return back()->withErrors(['email' => 'Your account has been deactivated.']);
+                return back()->withErrors(['login' => 'Your account has been deactivated.']);
             }
 
             $defaultUrl = Auth::user()->isAdmin() ? '/checklist/conversations' : '/checklist';
@@ -35,8 +46,8 @@ class AuthController extends Controller
         }
 
         return back()->withErrors([
-            'email' => 'The provided credentials do not match our records.',
-        ])->onlyInput('email');
+            'login' => 'The provided credentials do not match our records.',
+        ])->onlyInput('login');
     }
 
     public function logout(Request $request)

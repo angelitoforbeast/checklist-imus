@@ -25,8 +25,9 @@
             <form method="POST" action="/login" class="space-y-4">
                 @csrf
                 <div>
-                    <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                    <input type="email" name="email" id="email" value="{{ old('email') }}" required autofocus
+                    <label for="login" class="block text-sm font-medium text-gray-700 mb-1">Email or Username</label>
+                    <input type="text" name="login" id="login" value="{{ old('login') }}" required autofocus
+                        placeholder="Enter email or username"
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
                 </div>
                 <div>
