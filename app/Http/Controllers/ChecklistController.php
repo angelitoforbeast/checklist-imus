@@ -1378,20 +1378,11 @@ class ChecklistController extends Controller
 
         $submission = ChecklistSubmission::firstOrCreate(
             $lookupKey,
-            ['user_id' => $user->id, 'status' => 'completed']
+            ['user_id' => $user->id, 'status' => 'pending']
         );
 
-        // If reverted, mark as completed again
-        if ($submission->status === 'pending') {
-            $submission->status = 'completed';
-            $submission->save();
-        }
-
-        // Set started_at if not already set
-        if (!$submission->started_at) {
-            $submission->started_at = now();
-            $submission->save();
-        }
+        // Do NOT auto-start or auto-complete here.
+        // User must click Start button manually, and Mark as Done to complete.
 
         $file = $request->file('photo');
         $nextOrder = $submission->files()->max('sort_order') + 1;
@@ -1449,20 +1440,11 @@ class ChecklistController extends Controller
 
         $submission = ChecklistSubmission::firstOrCreate(
             $lookupKey,
-            ['user_id' => $user->id, 'status' => 'completed']
+            ['user_id' => $user->id, 'status' => 'pending']
         );
 
-        // If reverted, mark as completed again
-        if ($submission->status === 'pending') {
-            $submission->status = 'completed';
-            $submission->save();
-        }
-
-        // Set started_at if not already set
-        if (!$submission->started_at) {
-            $submission->started_at = now();
-            $submission->save();
-        }
+        // Do NOT auto-start or auto-complete here.
+        // User must click Start button manually, and Mark as Done to complete.
 
         // Append note (keep in submission.notes for backward compat, but logs are the real source)
         $submission->update(['notes' => $request->notes]);
