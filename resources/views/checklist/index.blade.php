@@ -468,9 +468,9 @@
                ],
                submitEvents: [
                  @if($sub)
-                   @foreach($sub->logs->whereIn('action', ['submitted','updated'])->sortBy('created_at') as $sLog)
+                   @foreach($sub->logs->whereIn('action', ['started','submitted','updated'])->sortBy('created_at') as $sLog)
                      @if($sLog->created_at)
-                       { text: '{{ ($sLog->user->name ?? 'Someone') }} {{ $sLog->action === 'submitted' ? 'marked as done' : 're-submitted' }}', time: '{{ $sLog->created_at->format('g:i A') }}', ts: {{ $sLog->created_at->timestamp }} },
+                       { text: '{{ ($sLog->user->name ?? 'Someone') }} {{ $sLog->action === 'started' ? 'started this task' : ($sLog->action === 'submitted' ? 'marked as done' : 're-submitted') }}', time: '{{ $sLog->created_at->format('g:i A') }}', ts: {{ $sLog->created_at->timestamp }} },
                      @endif
                    @endforeach
                  @endif
@@ -479,10 +479,7 @@
                get chatMessages() {
                  let messages = [];
 
-                 // Add start event
-                 if (this.taskStarted && this.startedAt) {
-                   messages.push({ type: 'event', text: this.startedBy + ' started this task', time: this.startedAt, ts: 0 });
-                 }
+                 // Start event is now included in submitEvents from server logs (no manual duplicate)
 
                  // Group photos into batches (within 120 seconds = same batch)
                  let currentBatch = null;
@@ -596,6 +593,13 @@
                      this.startedAt = data.started_at;
                      this.startedBy = data.user;
                      this.startedAtTs = Math.floor(Date.now()/1000);
+                     // Add started event to chat
+                     this.submitEvents.push({ text: data.user + ' started this task', time: data.started_at, ts: this.startedAtTs });
+                     // Scroll to bottom
+                     this.$nextTick(() => {
+                       const chatArea = this.$refs.chatArea{{ $task->id }};
+                       if (chatArea) chatArea.scrollTop = chatArea.scrollHeight;
+                     });
                    } else {
                      alert(data.error || 'Failed to start task');
                    }
@@ -910,16 +914,7 @@
                 </div>
               </template>
 
-              {{-- START BUTTON (shown when task not yet started AND pre-start photos met) --}}
-              <template x-if="!taskStarted && preStartPhotosMet">
-                <div class="flex justify-center py-4">
-                  <button @click="startThisTask()"
-                          class="px-8 py-3 rounded-2xl font-bold text-base text-white transition-all duration-200 active:scale-[0.98] shadow-lg"
-                          style="background-color:#22c55e; box-shadow: 0 10px 15px -3px rgba(34,197,94,0.3)">
-                    ▶ Start Task
-                  </button>
-                </div>
-              </template>
+              {{-- START BUTTON moved to fixed bottom bar --}}
 
               {{-- Interleaved chat messages --}}
               <template x-for="(msg, mi) in chatMessages" :key="'msg'+mi">
@@ -1129,10 +1124,17 @@
             </div>
           </div>
 
-          {{-- Not started message at bottom --}}
+          {{-- START TASK fixed bottom bar (shown when pre-start photos met but not yet started) --}}
           <template x-if="!taskStarted && preStartPhotosMet">
-            <div class="flex-shrink-0 border-t border-gray-200 bg-gray-50 px-4 py-4 text-center">
-              <p class="text-sm text-gray-400">Tap <strong>"Start Task"</strong> to begin</p>
+            <div class="flex-shrink-0 border-t-2 border-green-400 bg-green-50" style="padding-bottom: env(safe-area-inset-bottom, 0px);">
+              <div class="max-w-lg mx-auto px-4 py-4">
+                <button @click="startThisTask()"
+                        class="w-full py-4 rounded-2xl font-bold text-lg text-white transition-all duration-200 active:scale-[0.98] shadow-xl"
+                        style="background: linear-gradient(135deg, #22c55e, #16a34a); box-shadow: 0 10px 25px -5px rgba(34,197,94,0.4);">
+                  ▶ Start Task
+                </button>
+                <p class="text-xs text-green-600 text-center mt-2 font-medium">Tap to begin this task</p>
+              </div>
             </div>
           </template>
 
