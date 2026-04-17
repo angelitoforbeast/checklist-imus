@@ -130,7 +130,8 @@
                   <th class="text-left px-4 py-3 w-8"></th>
                   <th class="text-left px-3 py-3 min-w-[160px]">Task</th>
                   <th class="text-left px-3 py-3 min-w-[130px]">Description</th>
-                  <th class="text-left px-3 py-3 w-[180px]">Images</th>
+                  <th class="text-left px-3 py-3 w-[150px]">📸 Before Start</th>
+                  <th class="text-left px-3 py-3 w-[180px]">📸 After Start</th>
                   <th class="text-left px-3 py-3 min-w-[200px]">Notes</th>
                   <th class="text-left px-3 py-3 min-w-[110px]">Started by</th>
                   <th class="text-left px-3 py-3 w-[90px]">Start Time</th>
@@ -151,6 +152,14 @@
                   $subFiles      = ($done || $reverted) ? $sub->files : collect();
                   $imageFiles    = $subFiles->filter(fn($f) => $f->isImage());
                   $otherFiles    = $subFiles->filter(fn($f) => !$f->isImage());
+                  // Split images: before start vs after start
+                  $startedAt     = $sub ? $sub->started_at : null;
+                  $beforeStartImages = $startedAt
+                    ? $imageFiles->filter(fn($f) => $f->created_at <= $startedAt)
+                    : ($sub && !$sub->started_at ? $imageFiles : collect());
+                  $afterStartImages  = $startedAt
+                    ? $imageFiles->filter(fn($f) => $f->created_at > $startedAt)
+                    : collect();
                   // Analysis
                   $analyzeUrl    = $done ? route('checklist.analyze', $sub) : '';
                   $logsUrl       = $done ? route('checklist.analysis-logs', $sub) : '';
@@ -334,14 +343,31 @@
                       {{ $task->description ?: '—' }}
                     </td>
 
-                    {{-- Images --}}
+                    {{-- Before Start Photos --}}
                     <td class="px-3 py-3 align-top">
-                      @if($imageFiles->count() > 0)
+                      @if($beforeStartImages->count() > 0)
                         <div class="flex flex-wrap gap-1">
-                          @foreach($imageFiles as $f)
+                          @foreach($beforeStartImages as $f)
                             <img src="{{ Storage::url($f->file_path) }}"
                                  @click="$dispatch('open-lightbox', '{{ Storage::url($f->file_path) }}')"
-                                 class="w-14 h-14 object-cover rounded-lg border border-gray-100 hover:opacity-80 transition shadow-sm cursor-zoom-in"
+                                 class="w-12 h-12 object-cover rounded-lg border border-orange-200 hover:opacity-80 transition shadow-sm cursor-zoom-in"
+                                 alt="{{ $f->file_original_name }}">
+                          @endforeach
+                        </div>
+                        <p class="text-[10px] text-orange-400 mt-1">{{ $beforeStartImages->count() }} photo(s)</p>
+                      @else
+                        <span class="text-gray-200">—</span>
+                      @endif
+                    </td>
+
+                    {{-- After Start Photos --}}
+                    <td class="px-3 py-3 align-top">
+                      @if($afterStartImages->count() > 0)
+                        <div class="flex flex-wrap gap-1">
+                          @foreach($afterStartImages as $f)
+                            <img src="{{ Storage::url($f->file_path) }}"
+                                 @click="$dispatch('open-lightbox', '{{ Storage::url($f->file_path) }}')"
+                                 class="w-12 h-12 object-cover rounded-lg border border-blue-200 hover:opacity-80 transition shadow-sm cursor-zoom-in"
                                  alt="{{ $f->file_original_name }}">
                           @endforeach
                         </div>
@@ -351,10 +377,11 @@
                             📎 <span class="truncate max-w-[90px]">{{ $f->file_original_name }}</span>
                           </a>
                         @endforeach
+                        <p class="text-[10px] text-blue-400 mt-1">{{ $afterStartImages->count() }} photo(s)</p>
                       @elseif($done && $sub->file_path)
                         <img src="{{ Storage::url($sub->file_path) }}"
                              @click="$dispatch('open-lightbox', '{{ Storage::url($sub->file_path) }}')"
-                             class="w-14 h-14 object-cover rounded-lg border border-gray-100 hover:opacity-80 transition cursor-zoom-in">
+                             class="w-12 h-12 object-cover rounded-lg border border-blue-200 hover:opacity-80 transition cursor-zoom-in">
                       @else
                         <span class="text-gray-200">—</span>
                       @endif
@@ -520,7 +547,7 @@
                   {{-- AI Analysis result row --}}
                   @if($done)
                     <tr x-show="showAnalysis || analyzing" x-transition class="border-b border-purple-100 bg-purple-50/30">
-                      <td colspan="13" class="px-6 py-4">
+                      <td colspan="14" class="px-6 py-4">
                         {{-- Loading --}}
                         <template x-if="analyzing">
                           <div class="flex items-center gap-2 text-sm text-purple-500">
@@ -572,7 +599,7 @@
 
                     {{-- Analysis History row --}}
                     <tr x-show="showHistory" x-transition class="border-b border-purple-100 bg-purple-50/10">
-                      <td colspan="13" class="px-6 py-4">
+                      <td colspan="14" class="px-6 py-4">
                         <template x-if="historyLoading">
                           <div class="flex items-center gap-2 text-xs text-gray-400">
                             <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
@@ -604,7 +631,7 @@
 
                     {{-- Approval result row --}}
                     <tr x-show="showApproval || approving" x-transition class="border-b border-emerald-100 bg-emerald-50/30">
-                      <td colspan="13" class="px-6 py-4">
+                      <td colspan="14" class="px-6 py-4">
                         {{-- Loading --}}
                         <template x-if="approving">
                           <div class="flex items-center gap-2 text-sm text-emerald-500">
@@ -662,7 +689,7 @@
 
                     {{-- Approval History row --}}
                     <tr x-show="showApprovalHistory" x-transition class="border-b border-emerald-100 bg-emerald-50/10">
-                      <td colspan="13" class="px-6 py-4">
+                      <td colspan="14" class="px-6 py-4">
                         <template x-if="approvalHistoryLoading">
                           <div class="flex items-center gap-2 text-xs text-gray-400">
                             <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
@@ -703,7 +730,7 @@
                   {{-- Admin Comment/Chat Row --}}
                   @if(Auth::user()->isAdmin())
                     <tr class="border-b border-blue-100 bg-blue-50/20">
-                      <td colspan="13" class="px-6 py-3">
+                      <td colspan="14" class="px-6 py-3">
                         {{-- Existing comments --}}
                         @php $taskComments = $commentsByTask->get($task->id, collect()); @endphp
                         @if($taskComments->count() > 0)
