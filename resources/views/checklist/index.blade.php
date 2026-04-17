@@ -294,7 +294,7 @@
         <div x-show="focusTask === {{ $task->id }}"
              x-transition.opacity.duration.200ms
              class="fixed inset-0 z-50 flex flex-col bg-white"
-             style="display:none"
+             style="display:none; height:100dvh; height:-webkit-fill-available;"
              x-data="{
                acknowledging: false,
                acknowledged: {{ $done ? 'true' : 'false' }},
@@ -423,8 +423,8 @@
         <div x-show="focusTask === {{ $task->id }}"
              x-transition.opacity.duration.200ms
              class="fixed inset-0 z-50 flex flex-col bg-white"
-             style="display:none"
-             x-effect="if (focusTask === {{ $task->id }}) { startConversationPoll(); } else { stopConversationPoll(); }"
+             style="display:none; height:100dvh; height:-webkit-fill-available;"
+             x-effect="if (focusTask === {{ $task->id }}) { startConversationPoll(); if (taskStarted && !taskCompleted) startTimer(); } else { stopConversationPoll(); stopTimer(); }"
              x-data="{
                uploading: false,
                sendingNote: false,
@@ -476,6 +476,28 @@
                  @endif
                ],
                conversationPollTimer: null,
+               timerInterval: null,
+               timerDisplay: '00:00:00',
+               taskCompleted: {{ ($sub && $sub->status === 'completed') ? 'true' : 'false' }},
+               startTimer() {
+                 if (this.timerInterval) return;
+                 const self = this;
+                 const tick = () => {
+                   if (!self.startedAtTs || self.startedAtTs === 0) return;
+                   const now = Math.floor(Date.now() / 1000);
+                   let diff = now - self.startedAtTs;
+                   if (diff < 0) diff = 0;
+                   const h = Math.floor(diff / 3600);
+                   const m = Math.floor((diff % 3600) / 60);
+                   const s = diff % 60;
+                   self.timerDisplay = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+                 };
+                 tick();
+                 this.timerInterval = setInterval(tick, 1000);
+               },
+               stopTimer() {
+                 if (this.timerInterval) { clearInterval(this.timerInterval); this.timerInterval = null; }
+               },
                get chatMessages() {
                  let messages = [];
 
@@ -593,6 +615,8 @@
                      this.startedAt = data.started_at;
                      this.startedBy = data.user;
                      this.startedAtTs = Math.floor(Date.now()/1000);
+                     // Start the timer
+                     this.startTimer();
                      // Add started event to chat
                      this.submitEvents.push({ text: data.user + ' started this task', time: data.started_at, ts: this.startedAtTs });
                      // Scroll to bottom
@@ -719,6 +743,7 @@
                    if (data.success) {
                      this.taskCompleted = true;
                      this.newContentSent = false;
+                     this.stopTimer();
                    } else {
                      alert(data.error || 'Failed to submit. Please try again.');
                    }
@@ -779,6 +804,13 @@
                   </span>
                 </div>
               </div>
+              {{-- Running timer --}}
+              <template x-if="taskStarted && !taskCompleted">
+                <div class="flex items-center gap-1.5 bg-white/20 rounded-full px-3 py-1.5 flex-shrink-0">
+                  <span class="text-white/80 text-xs">⏱</span>
+                  <span class="text-white font-mono text-sm font-bold" x-text="timerDisplay"></span>
+                </div>
+              </template>
               @if($isAdmin && $sub)
                 <button type="button"
                         x-data="{ resetting: false }"

@@ -132,7 +132,11 @@
                   <th class="text-left px-3 py-3 min-w-[130px]">Description</th>
                   <th class="text-left px-3 py-3 w-[180px]">Images</th>
                   <th class="text-left px-3 py-3 min-w-[200px]">Notes</th>
-                  <th class="text-left px-3 py-3 min-w-[140px]">Submitted by</th>
+                  <th class="text-left px-3 py-3 min-w-[110px]">Started by</th>
+                  <th class="text-left px-3 py-3 w-[90px]">Start Time</th>
+                  <th class="text-left px-3 py-3 min-w-[110px]">Completed by</th>
+                  <th class="text-left px-3 py-3 w-[90px]">End Time</th>
+                  <th class="text-left px-3 py-3 w-[100px]">Duration</th>
                   <th class="text-left px-3 py-3 w-[110px]">AI Analysis</th>
                   <th class="text-left px-3 py-3 w-[80px]">Action</th>
                   <th class="text-left px-3 py-3 w-[120px]">Approval</th>
@@ -152,6 +156,14 @@
                   $logsUrl       = $done ? route('checklist.analysis-logs', $sub) : '';
                   $savedAnalysis = $done ? $sub->latestAnalysis : null;
                   $analysisCount = $done ? ($sub->analysis_logs_count ?? 0) : 0;
+                  // Started / Completed info
+                  $startedLog    = $sub ? $sub->logs->where('action', 'started')->first() : null;
+                  $submittedLog  = $sub ? $sub->logs->where('action', 'submitted')->first() : null;
+                  $startedByName = $startedLog ? ($startedLog->user->name ?? 'Unknown') : ($sub && $sub->started_at ? ($sub->user->name ?? 'Unknown') : null);
+                  $startTime     = $sub && $sub->started_at ? $sub->started_at : ($startedLog ? $startedLog->created_at : null);
+                  $completedByName = $submittedLog ? ($submittedLog->user->name ?? 'Unknown') : ($done ? ($sub->user->name ?? 'Unknown') : null);
+                  $endTime       = $submittedLog ? $submittedLog->created_at : ($done ? $sub->updated_at : null);
+                  $duration      = ($startTime && $endTime) ? $startTime->diff($endTime) : null;
                   // Approval
                   $approvalUrl   = $done ? route('checklist.approval-check', $sub) : '';
                   $approvalLogsUrl = $done ? route('checklist.approval-logs', $sub) : '';
@@ -357,37 +369,71 @@
                       @endif
                     </td>
 
-                    {{-- Submitted by --}}
+                    {{-- Started by --}}
                     <td class="px-3 py-3 align-top">
-                      @if($done)
-                        @php
-                          $editLogs  = $sub->logs->where('action', 'updated');
-                          $lastEdit  = $editLogs->first();
-                          $editCount = $editLogs->count();
-                        @endphp
+                      @if($startedByName)
                         <div class="flex items-center gap-2">
-                          <div class="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 flex-shrink-0">
-                            {{ strtoupper(substr($sub->user->name ?? '?', 0, 1)) }}
+                          <div class="w-6 h-6 rounded-full bg-yellow-100 flex items-center justify-center text-xs font-bold text-yellow-600 flex-shrink-0">
+                            {{ strtoupper(substr($startedByName, 0, 1)) }}
                           </div>
-                          <div>
-                            <p class="text-xs font-semibold text-gray-700 leading-none">{{ $sub->user->name ?? 'Unknown' }}</p>
-                            <p class="text-xs text-gray-400 leading-none mt-0.5">{{ $sub->created_at->format('h:i A') }}</p>
-                          </div>
+                          <p class="text-xs font-semibold text-gray-700 leading-none">{{ $startedByName }}</p>
                         </div>
-                        @if($lastEdit)
-                          <div class="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-gray-100">
-                            <div class="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-xs font-bold text-amber-600 flex-shrink-0">
-                              {{ strtoupper(substr($lastEdit->user->name ?? '?', 0, 1)) }}
-                            </div>
-                            <div>
-                              <p class="text-xs text-amber-600 leading-none">edited by {{ $lastEdit->user->name ?? 'Unknown' }}</p>
-                              <p class="text-xs text-gray-400 leading-none mt-0.5">
-                                {{ \Carbon\Carbon::parse($lastEdit->created_at)->format('h:i A') }}
-                                {{ $editCount > 1 ? '&middot; '.$editCount.' edits' : '' }}
-                              </p>
-                            </div>
+                      @else
+                        <span class="text-gray-200">—</span>
+                      @endif
+                    </td>
+
+                    {{-- Start Time --}}
+                    <td class="px-3 py-3 align-top">
+                      @if($startTime)
+                        <p class="text-xs text-gray-600 font-medium">{{ $startTime->format('h:i A') }}</p>
+                      @else
+                        <span class="text-gray-200">—</span>
+                      @endif
+                    </td>
+
+                    {{-- Completed by --}}
+                    <td class="px-3 py-3 align-top">
+                      @if($completedByName && $done)
+                        <div class="flex items-center gap-2">
+                          <div class="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center text-xs font-bold text-green-600 flex-shrink-0">
+                            {{ strtoupper(substr($completedByName, 0, 1)) }}
                           </div>
-                        @endif
+                          <p class="text-xs font-semibold text-gray-700 leading-none">{{ $completedByName }}</p>
+                        </div>
+                      @else
+                        <span class="text-gray-200">—</span>
+                      @endif
+                    </td>
+
+                    {{-- End Time --}}
+                    <td class="px-3 py-3 align-top">
+                      @if($endTime && $done)
+                        <p class="text-xs text-gray-600 font-medium">{{ $endTime->format('h:i A') }}</p>
+                      @else
+                        <span class="text-gray-200">—</span>
+                      @endif
+                    </td>
+
+                    {{-- Duration --}}
+                    <td class="px-3 py-3 align-top">
+                      @if($duration && $done)
+                        @php
+                          $totalMins = $duration->days * 1440 + $duration->h * 60 + $duration->i;
+                          if ($totalMins < 1) {
+                            $durationText = $duration->s . 's';
+                          } elseif ($totalMins < 60) {
+                            $durationText = $totalMins . ' min' . ($totalMins > 1 ? 's' : '');
+                          } else {
+                            $hrs = floor($totalMins / 60);
+                            $mins = $totalMins % 60;
+                            $durationText = $hrs . 'h ' . $mins . 'm';
+                          }
+                        @endphp
+                        <span class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-semibold
+                          {{ $totalMins <= 30 ? 'bg-green-50 text-green-600' : ($totalMins <= 60 ? 'bg-yellow-50 text-yellow-600' : 'bg-red-50 text-red-600') }}">
+                          ⏱ {{ $durationText }}
+                        </span>
                       @else
                         <span class="text-gray-200">—</span>
                       @endif
@@ -474,7 +520,7 @@
                   {{-- AI Analysis result row --}}
                   @if($done)
                     <tr x-show="showAnalysis || analyzing" x-transition class="border-b border-purple-100 bg-purple-50/30">
-                      <td colspan="9" class="px-6 py-4">
+                      <td colspan="13" class="px-6 py-4">
                         {{-- Loading --}}
                         <template x-if="analyzing">
                           <div class="flex items-center gap-2 text-sm text-purple-500">
@@ -526,7 +572,7 @@
 
                     {{-- Analysis History row --}}
                     <tr x-show="showHistory" x-transition class="border-b border-purple-100 bg-purple-50/10">
-                      <td colspan="9" class="px-6 py-4">
+                      <td colspan="13" class="px-6 py-4">
                         <template x-if="historyLoading">
                           <div class="flex items-center gap-2 text-xs text-gray-400">
                             <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
@@ -558,7 +604,7 @@
 
                     {{-- Approval result row --}}
                     <tr x-show="showApproval || approving" x-transition class="border-b border-emerald-100 bg-emerald-50/30">
-                      <td colspan="9" class="px-6 py-4">
+                      <td colspan="13" class="px-6 py-4">
                         {{-- Loading --}}
                         <template x-if="approving">
                           <div class="flex items-center gap-2 text-sm text-emerald-500">
@@ -616,7 +662,7 @@
 
                     {{-- Approval History row --}}
                     <tr x-show="showApprovalHistory" x-transition class="border-b border-emerald-100 bg-emerald-50/10">
-                      <td colspan="9" class="px-6 py-4">
+                      <td colspan="13" class="px-6 py-4">
                         <template x-if="approvalHistoryLoading">
                           <div class="flex items-center gap-2 text-xs text-gray-400">
                             <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
@@ -657,7 +703,7 @@
                   {{-- Admin Comment/Chat Row --}}
                   @if(Auth::user()->isAdmin())
                     <tr class="border-b border-blue-100 bg-blue-50/20">
-                      <td colspan="9" class="px-6 py-3">
+                      <td colspan="13" class="px-6 py-3">
                         {{-- Existing comments --}}
                         @php $taskComments = $commentsByTask->get($task->id, collect()); @endphp
                         @if($taskComments->count() > 0)
