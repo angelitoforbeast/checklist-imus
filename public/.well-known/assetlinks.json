@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.householdreport.twa",
+        "sha256_cert_fingerprints": ["CE:78:F1:E8:F5:C1:7B:25:D6:8A:87:09:0F:5D:34:FC:26:24:72:69:A1:5F:00:9E:41:22:CF:1D:0D:31:78:E2"]
+      }
+    }]
