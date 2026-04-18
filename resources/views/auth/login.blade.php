@@ -50,6 +50,18 @@
                 </button>
             </form>
         </div>
+
+        <!-- APK Download Link -->
+        <div class="mt-4 bg-white rounded-xl shadow-lg p-4 text-center">
+            <a href="/HH_Checklist.apk" download
+               class="inline-flex items-center justify-center gap-2 w-full bg-green-600 text-white py-2.5 rounded-lg font-medium hover:bg-green-700 transition text-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3" />
+                </svg>
+                Download Android App (.apk)
+            </a>
+            <p class="text-xs text-gray-400 mt-2">Install the app on your Android phone for quick access</p>
+        </div>
     </div>
 <script>
   if ('serviceWorker' in navigator) {
