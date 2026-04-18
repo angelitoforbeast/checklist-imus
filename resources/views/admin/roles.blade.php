@@ -94,16 +94,24 @@
                 </div>
               </div>
               <div class="flex items-center gap-1.5 flex-shrink-0">
-                <button @click="editing = true" class="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition">
-                  <i class="fa-solid fa-pen-to-square mr-1"></i> Edit
-                </button>
-                @if($role->users_count === 0)
-                  <form method="POST" action="{{ route('admin.destroy-role', $role) }}" onsubmit="return confirm('Delete role \'{{ $role->name }}\'?')">
-                    @csrf @method('DELETE')
-                    <button type="submit" class="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 transition">
-                      <i class="fa-solid fa-trash mr-1"></i> Delete
-                    </button>
-                  </form>
+                @php
+                  $authRoleLevel = auth()->user()->role->level ?? 0;
+                  $canEditRole = $role->level < $authRoleLevel || ($authRoleLevel >= 100);
+                @endphp
+                @if($canEditRole)
+                  <button @click="editing = true" class="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition">
+                    <i class="fa-solid fa-pen-to-square mr-1"></i> Edit
+                  </button>
+                  @if($role->users_count === 0)
+                    <form method="POST" action="{{ route('admin.destroy-role', $role) }}" onsubmit="return confirm('Delete role \'{{ $role->name }}\'?')">
+                      @csrf @method('DELETE')
+                      <button type="submit" class="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 transition">
+                        <i class="fa-solid fa-trash mr-1"></i> Delete
+                      </button>
+                    </form>
+                  @endif
+                @else
+                  <span class="text-xs text-gray-400 font-medium"><i class="fa-solid fa-lock mr-1"></i> Protected</span>
                 @endif
               </div>
             </div>

@@ -43,6 +43,12 @@ class RoleController extends Controller
 
     public function updateRole(Request $request, Role $role)
     {
+        // Protect roles with level >= auth user's level (unless auth is CEO level 100+)
+        $authLevel = auth()->user()->role->level ?? 0;
+        if ($role->level >= $authLevel && $authLevel < 100) {
+            return back()->with('error', 'You do not have permission to edit this role.');
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:100|unique:roles,name,' . $role->id,
         ]);
@@ -59,6 +65,12 @@ class RoleController extends Controller
 
     public function destroyRole(Role $role)
     {
+        // Protect roles with level >= auth user's level (unless auth is CEO level 100+)
+        $authLevel = auth()->user()->role->level ?? 0;
+        if ($role->level >= $authLevel && $authLevel < 100) {
+            return back()->with('error', 'You do not have permission to delete this role.');
+        }
+
         if ($role->users()->count() > 0) {
             return back()->with('error', 'Cannot delete a role that has users assigned to it. Reassign users first.');
         }
