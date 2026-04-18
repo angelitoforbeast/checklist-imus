@@ -144,26 +144,37 @@
               </div>
 
               {{-- Actions --}}
+              @php
+                $authLevel = auth()->user()->role->level ?? 0;
+                $targetLevel = $user->role->level ?? 0;
+                $canManage = $targetLevel <= $authLevel;
+              @endphp
               <div class="flex items-center gap-1 flex-shrink-0">
-                <button @click="editing = true"
-                        class="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition font-medium">
-                  <i class="fa-solid fa-pen-to-square mr-0.5"></i> Edit
-                </button>
-                <form method="POST" action="{{ route('admin.toggle-user', $user) }}">
-                  @csrf @method('PATCH')
-                  <button type="submit"
-                          class="text-xs px-3 py-1.5 rounded-lg border transition font-medium
-                            {{ $user->is_active ? 'border-amber-200 text-amber-600 hover:bg-amber-50' : 'border-green-200 text-green-600 hover:bg-green-50' }}">
-                    {{ $user->is_active ? 'Disable' : 'Enable' }}
+                @if($canManage)
+                  <button @click="editing = true"
+                          class="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition font-medium">
+                    <i class="fa-solid fa-pen-to-square mr-0.5"></i> Edit
                   </button>
-                </form>
-                @if($user->id !== auth()->id())
-                  <form method="POST" action="{{ route('admin.destroy-user', $user) }}" onsubmit="return confirm('Delete user \'{{ $user->name }}\'? This cannot be undone.')">
-                    @csrf @method('DELETE')
-                    <button type="submit" class="text-xs px-2.5 py-1.5 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600 transition">
-                      <i class="fa-solid fa-trash-can"></i>
+                  <form method="POST" action="{{ route('admin.toggle-user', $user) }}">
+                    @csrf @method('PATCH')
+                    <button type="submit"
+                            class="text-xs px-3 py-1.5 rounded-lg border transition font-medium
+                              {{ $user->is_active ? 'border-amber-200 text-amber-600 hover:bg-amber-50' : 'border-green-200 text-green-600 hover:bg-green-50' }}">
+                      {{ $user->is_active ? 'Disable' : 'Enable' }}
                     </button>
                   </form>
+                  @if($user->id !== auth()->id())
+                    <form method="POST" action="{{ route('admin.destroy-user', $user) }}" onsubmit="return confirm('Delete user \'{{ $user->name }}\'? This cannot be undone.')">
+                      @csrf @method('DELETE')
+                      <button type="submit" class="text-xs px-2.5 py-1.5 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600 transition">
+                        <i class="fa-solid fa-trash-can"></i>
+                      </button>
+                    </form>
+                  @endif
+                @else
+                  <span class="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-400 font-medium">
+                    <i class="fa-solid fa-lock mr-0.5"></i> Protected
+                  </span>
                 @endif
               </div>
             </div>

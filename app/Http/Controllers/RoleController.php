@@ -94,6 +94,13 @@ class RoleController extends Controller
 
     public function updateUser(Request $request, User $user)
     {
+        // Protect higher-level users (e.g., CEO cannot be edited by Admin)
+        $authLevel = auth()->user()->role->level ?? 0;
+        $targetLevel = $user->role->level ?? 0;
+        if ($targetLevel > $authLevel) {
+            return back()->with('error', 'You do not have permission to edit this user.');
+        }
+
         $validated = $request->validate([
             'name'     => 'required|string|max:255',
             'username' => 'nullable|string|max:100|unique:users,username,' . $user->id . '|regex:/^[a-zA-Z0-9._-]+$/',
@@ -123,6 +130,13 @@ class RoleController extends Controller
 
     public function toggleUser(User $user)
     {
+        // Protect higher-level users
+        $authLevel = auth()->user()->role->level ?? 0;
+        $targetLevel = $user->role->level ?? 0;
+        if ($targetLevel > $authLevel) {
+            return back()->with('error', 'You do not have permission to modify this user.');
+        }
+
         $user->update(['is_active' => !$user->is_active]);
         return back()->with('success', $user->name . ' has been ' . ($user->is_active ? 'activated' : 'deactivated') . '.');
     }
@@ -131,6 +145,13 @@ class RoleController extends Controller
     {
         if ($user->id === auth()->id()) {
             return back()->with('error', 'You cannot delete yourself.');
+        }
+
+        // Protect higher-level users
+        $authLevel = auth()->user()->role->level ?? 0;
+        $targetLevel = $user->role->level ?? 0;
+        if ($targetLevel > $authLevel) {
+            return back()->with('error', 'You do not have permission to delete this user.');
         }
 
         $user->delete();
