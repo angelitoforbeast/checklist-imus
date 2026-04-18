@@ -7,7 +7,11 @@
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <title>{{ $title ?? ($heading ?? 'Checklist Imus') }}</title>
+  <meta name="theme-color" content="#1f2937">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <title>{{ $title ?? ($heading ?? 'Household Report') }}</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/alpinejs" defer></script>
@@ -206,5 +210,66 @@
     @endif
   </main>
 </div>
+{{-- Service Worker Registration --}}
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('SW registered:', reg.scope))
+        .catch(err => console.log('SW registration failed:', err));
+    });
+  }
+</script>
+
+{{-- PWA Install Prompt --}}
+<div id="pwa-install-banner" style="display:none;" class="fixed bottom-4 left-4 right-4 z-[9999] bg-white rounded-xl shadow-2xl border border-gray-200 p-4 flex items-center gap-3 max-w-md mx-auto">
+  <img src="/icons/icon-192.png" alt="App Icon" class="w-12 h-12 rounded-xl">
+  <div class="flex-1 min-w-0">
+    <p class="text-sm font-semibold text-gray-800">Install Household Report</p>
+    <p class="text-xs text-gray-500">Add to home screen for quick access</p>
+  </div>
+  <button id="pwa-install-btn" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg whitespace-nowrap transition">Install</button>
+  <button id="pwa-dismiss-btn" class="text-gray-400 hover:text-gray-600 p-1" aria-label="Dismiss">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+  </button>
+</div>
+
+<script>
+  let deferredPrompt;
+  const banner = document.getElementById('pwa-install-banner');
+  const installBtn = document.getElementById('pwa-install-btn');
+  const dismissBtn = document.getElementById('pwa-dismiss-btn');
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    // Show banner if not dismissed before
+    if (!localStorage.getItem('pwa-dismissed')) {
+      banner.style.display = 'flex';
+    }
+  });
+
+  if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      banner.style.display = 'none';
+    });
+  }
+
+  if (dismissBtn) {
+    dismissBtn.addEventListener('click', () => {
+      banner.style.display = 'none';
+      localStorage.setItem('pwa-dismissed', '1');
+    });
+  }
+
+  window.addEventListener('appinstalled', () => {
+    banner.style.display = 'none';
+    deferredPrompt = null;
+  });
+</script>
 </body>
 </html>
