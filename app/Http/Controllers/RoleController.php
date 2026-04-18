@@ -79,6 +79,13 @@ class RoleController extends Controller
             'username.regex' => 'Username can only contain letters, numbers, dots, hyphens, and underscores.',
         ]);
 
+        // Prevent assigning a role with higher level than the auth user's role
+        $authLevel = auth()->user()->role->level ?? 0;
+        $targetRole = Role::find($validated['role_id']);
+        if ($targetRole && $targetRole->level > $authLevel) {
+            return back()->with('error', 'You cannot assign a role higher than your own.');
+        }
+
         User::create([
             'name'           => $validated['name'],
             'username'       => $validated['username'] ?? null,
@@ -109,6 +116,12 @@ class RoleController extends Controller
         ], [
             'username.regex' => 'Username can only contain letters, numbers, dots, hyphens, and underscores.',
         ]);
+
+        // Prevent assigning a role with higher level than the auth user's role
+        $newRole = Role::find($validated['role_id']);
+        if ($newRole && $newRole->level > $authLevel) {
+            return back()->with('error', 'You cannot assign a role higher than your own.');
+        }
 
         $user->update([
             'name'     => $validated['name'],

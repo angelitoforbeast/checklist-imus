@@ -68,7 +68,9 @@
                     class="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
               <option value="">Select role...</option>
               @foreach($roles as $r)
-                <option value="{{ $r->id }}">{{ $r->name }}{{ $r->is_admin ? ' (Admin)' : '' }}</option>
+                @if($r->level <= (auth()->user()->role->level ?? 0))
+                  <option value="{{ $r->id }}">{{ $r->name }}{{ $r->is_admin ? ' (Admin)' : '' }}</option>
+                @endif
               @endforeach
             </select>
           </div>
@@ -134,12 +136,16 @@
                     <span class="font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{{ $user->username }}</span>
                   @endif
                   <span>{{ $user->email }}</span>
-                  <span class="flex items-center gap-1">
-                    <span class="font-mono" x-text="showPw ? '{{ $user->plain_password ?? '(hidden)' }}' : '••••••'"></span>
-                    @if($user->plain_password)
-                      <button type="button" @click="showPw = !showPw" class="text-gray-400 hover:text-gray-600" x-text="showPw ? '🙈' : '👁'">👁</button>
-                    @endif
-                  </span>
+                  @if($canManage)
+                    <span class="flex items-center gap-1">
+                      <span class="font-mono" x-text="showPw ? '{{ $user->plain_password ?? '(hidden)' }}' : '••••••'"></span>
+                      @if($user->plain_password)
+                        <button type="button" @click="showPw = !showPw" class="text-gray-400 hover:text-gray-600" x-text="showPw ? '🙈' : '👁'">👁</button>
+                      @endif
+                    </span>
+                  @else
+                    <span class="text-xs text-gray-400"><i class="fa-solid fa-lock"></i> ••••••</span>
+                  @endif
                 </div>
               </div>
 
@@ -210,7 +216,9 @@
                   <select name="role_id" required
                           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
                     @foreach($roles as $r)
-                      <option value="{{ $r->id }}" {{ $user->role_id == $r->id ? 'selected' : '' }}>{{ $r->name }}{{ $r->is_admin ? ' (Admin)' : '' }}</option>
+                      @if($r->level <= (auth()->user()->role->level ?? 0))
+                        <option value="{{ $r->id }}" {{ $user->role_id == $r->id ? 'selected' : '' }}>{{ $r->name }}{{ $r->is_admin ? ' (Admin)' : '' }}</option>
+                      @endif
                     @endforeach
                   </select>
                 </div>
