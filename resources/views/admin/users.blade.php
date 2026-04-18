@@ -108,6 +108,11 @@
              :class="editing ? 'ring-2 ring-blue-300' : 'hover:shadow-md'">
 
           {{-- View Mode --}}
+          @php
+            $authLevel = auth()->user()->role->level ?? 0;
+            $targetLevel = $user->role->level ?? 0;
+            $canManage = $targetLevel <= $authLevel;
+          @endphp
           <div x-show="!editing" class="p-4">
             <div class="flex items-start gap-3">
               {{-- Avatar --}}
@@ -150,11 +155,6 @@
               </div>
 
               {{-- Actions --}}
-              @php
-                $authLevel = auth()->user()->role->level ?? 0;
-                $targetLevel = $user->role->level ?? 0;
-                $canManage = $targetLevel <= $authLevel;
-              @endphp
               <div class="flex items-center gap-1 flex-shrink-0">
                 @if($canManage)
                   <button @click="editing = true"
