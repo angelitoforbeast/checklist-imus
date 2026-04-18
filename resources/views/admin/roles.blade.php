@@ -47,7 +47,7 @@
         </div>
         <div class="w-24">
           <label class="block text-xs text-gray-500 mb-1">Level</label>
-          <input type="number" name="level" value="0" min="0" max="200"
+          <input type="number" name="level" value="0" min="0" max="{{ auth()->user()->role->level ?? 0 }}"
                  class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
         </div>
         <label class="flex items-center gap-1.5 text-sm text-gray-600 pb-1">
@@ -128,7 +128,7 @@
                   </div>
                   <div class="w-24">
                     <label class="block text-xs text-gray-500 mb-1">Level</label>
-                    <input type="number" name="level" value="{{ $role->level }}" min="0" max="200"
+                    <input type="number" name="level" value="{{ $role->level }}" min="0" max="{{ auth()->user()->role->level ?? 0 }}"
                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
                   </div>
                   <label class="flex items-center gap-1.5 text-sm text-gray-600 pb-1">

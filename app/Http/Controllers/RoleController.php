@@ -31,11 +31,23 @@ class RoleController extends Controller
             'name' => 'required|string|max:100|unique:roles,name',
         ]);
 
+        // Cannot create a role with level higher than auth user's level
+        $authLevel = auth()->user()->role->level ?? 0;
+        $newLevel = $request->integer('level', 0);
+        if ($newLevel > $authLevel) {
+            return back()->with('error', 'You cannot create a role with a higher level than your own (' . $authLevel . ').');
+        }
+
+        // Non-CEO cannot set is_admin
+        if ($request->boolean('is_admin') && $authLevel < 100) {
+            return back()->with('error', 'Only CEO can create admin roles.');
+        }
+
         Role::create([
             'name'     => $validated['name'],
             'slug'     => Str::slug($validated['name']),
             'is_admin' => $request->boolean('is_admin'),
-            'level'    => $request->integer('level', 0),
+            'level'    => $newLevel,
         ]);
 
         return back()->with('success', 'Role added!');
@@ -53,11 +65,17 @@ class RoleController extends Controller
             'name' => 'required|string|max:100|unique:roles,name,' . $role->id,
         ]);
 
+        // Cannot set level higher than auth user's level
+        $newLevel = $request->integer('level', $role->level);
+        if ($newLevel > $authLevel) {
+            return back()->with('error', 'You cannot set a role level higher than your own (' . $authLevel . ').');
+        }
+
         $role->update([
             'name'     => $validated['name'],
             'slug'     => Str::slug($validated['name']),
             'is_admin' => $request->boolean('is_admin'),
-            'level'    => $request->integer('level', $role->level),
+            'level'    => $newLevel,
         ]);
 
         return back()->with('success', 'Role updated!');
