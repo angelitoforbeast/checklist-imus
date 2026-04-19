@@ -52,15 +52,15 @@
         </div>
 
         <!-- APK Download Link -->
-        <div class="mt-4 bg-white rounded-xl shadow-lg p-4 text-center">
+        <div style="margin-top: 16px; background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); padding: 16px; text-align: center;">
             <a href="/HH_Checklist.apk" download
-               class="inline-flex items-center justify-center gap-2 w-full bg-green-600 text-white py-2.5 rounded-lg font-medium hover:bg-green-700 transition text-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+               style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; background-color: #16a34a; color: white; padding: 12px 0; border-radius: 8px; font-weight: 600; font-size: 14px; text-decoration: none;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3" />
                 </svg>
                 Download Android App (.apk)
             </a>
-            <p class="text-xs text-gray-400 mt-2">Install the app on your Android phone for quick access</p>
+            <p style="font-size: 12px; color: #9ca3af; margin-top: 8px;">Install the app on your Android phone for quick access</p>
         </div>
     </div>
 <script>
