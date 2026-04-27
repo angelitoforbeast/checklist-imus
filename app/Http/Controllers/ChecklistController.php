@@ -112,6 +112,119 @@ class ChecklistController extends Controller
         return $submissionsForTask->where('status', 'completed')->isNotEmpty();
     }
 
+    /**
+     * Helper: ensure first spawn exists for recurring-on-complete templates for today.
+     * Also spawns next task if previous was completed and delay has passed.
+     */
+    private function ensureRecurringSpawns(string $today)
+    {
+        // Get all active recurring templates
+        $templates = ChecklistTask::where('frequency', 'recurring_on_complete')
+            ->whereNull('parent_task_id')
+            ->where('is_active', true)
+            ->get();
+
+        foreach ($templates as $template) {
+            // Get today's spawned tasks for this template
+            $todaySpawns = ChecklistTask::where('parent_task_id', $template->id)
+                ->whereDate('created_at', $today)
+                ->orderBy('spawn_index')
+                ->get();
+
+            if ($todaySpawns->isEmpty()) {
+                // No spawns yet today — create the first one
+                $this->createSpawnedTask($template, 1, $today);
+                continue;
+            }
+
+            // Check if we can spawn more
+            $maxCount = $template->max_daily_count ?? 999;
+            if ($todaySpawns->count() >= $maxCount) continue;
+
+            // Check if the latest spawn is completed
+            $latestSpawn = $todaySpawns->last();
+            $latestSubmission = ChecklistSubmission::where('checklist_task_id', $latestSpawn->id)
+                ->where('date', $today)
+                ->where('status', 'completed')
+                ->first();
+
+            if (!$latestSubmission) continue;
+
+            // Check if enough time has passed since completion
+            $delayMinutes = $template->respawn_delay_minutes ?? 5;
+            $completedAt = $latestSubmission->updated_at;
+            if (now()->diffInMinutes($completedAt) >= $delayMinutes) {
+                $nextIndex = $todaySpawns->count() + 1;
+                $this->createSpawnedTask($template, $nextIndex, $today);
+            }
+        }
+    }
+
+    /**
+     * Helper: create a spawned task from a recurring template.
+     */
+    private function createSpawnedTask(ChecklistTask $template, int $index, string $today)
+    {
+        $spawn = ChecklistTask::create([
+            'title'                       => $template->title . ' - ' . $index,
+            'description'                 => $template->description,
+            'instructions'                => $template->instructions,
+            'type'                        => $template->type,
+            'required_photos'             => $template->required_photos,
+            'required_photos_before_start' => $template->required_photos_before_start,
+            'is_active'                   => true,
+            'sort_order'                  => $template->sort_order,
+            'ai_prompt'                   => $template->ai_prompt,
+            'approval_prompt'             => $template->approval_prompt,
+            'task_time'                   => null, // no fixed time for spawned tasks
+            'reference_image'             => $template->reference_image,
+            'frequency'                   => 'once', // spawned tasks are one-time
+            'submission_mode'             => $template->submission_mode ?? 'group',
+            'parent_task_id'              => $template->id,
+            'spawn_index'                 => $index,
+        ]);
+
+        // Copy assigned users from template
+        $spawn->assignedUsers()->sync($template->assignedUsers->pluck('id')->toArray());
+
+        // Copy reference files from template
+        foreach ($template->referenceFiles as $refFile) {
+            $spawn->referenceFiles()->create([
+                'file_path'          => $refFile->file_path,
+                'file_original_name' => $refFile->file_original_name,
+                'file_mime'          => $refFile->file_mime,
+                'sort_order'         => $refFile->sort_order,
+            ]);
+        }
+
+        return $spawn;
+    }
+
+    /**
+     * Helper: try to spawn next recurring task after completion.
+     */
+    private function trySpawnNextRecurring(ChecklistTask $completedTask, string $today)
+    {
+        if (!$completedTask->isSpawnedTask()) return;
+
+        $template = ChecklistTask::find($completedTask->parent_task_id);
+        if (!$template || $template->frequency !== 'recurring_on_complete') return;
+
+        $maxCount = $template->max_daily_count ?? 999;
+        $todaySpawnCount = ChecklistTask::where('parent_task_id', $template->id)
+            ->whereDate('created_at', $today)
+            ->count();
+
+        if ($todaySpawnCount >= $maxCount) return;
+
+        // Check delay — if delay is 0, spawn immediately
+        $delayMinutes = $template->respawn_delay_minutes ?? 5;
+        if ($delayMinutes <= 0) {
+            $this->createSpawnedTask($template, $todaySpawnCount + 1, $today);
+        }
+        // If delay > 0, the next poll/page load will handle it via ensureRecurringSpawns
+    }
+
     // =========================================================================
     // USER VIEW
     // =========================================================================
@@ -120,6 +233,9 @@ class ChecklistController extends Controller
     {
         $today = now()->toDateString();
         $user  = Auth::user();
+
+        // Ensure recurring-on-complete tasks have their spawns for today
+        $this->ensureRecurringSpawns($today);
 
         $allTasks = ChecklistTask::with(['assignedUsers', 'referenceFiles'])
             ->where('is_active', true)
@@ -206,6 +322,9 @@ class ChecklistController extends Controller
     {
         $today = now()->toDateString();
         $user  = Auth::user();
+
+        // Ensure recurring-on-complete tasks have their spawns for today
+        $this->ensureRecurringSpawns($today);
 
         $allTasks = ChecklistTask::with('assignedUsers')
             ->where('is_active', true)
@@ -479,6 +598,11 @@ class ChecklistController extends Controller
 
         $isToday = $dateObj->isToday();
 
+        // Ensure recurring-on-complete tasks have their spawns for today
+        if ($isToday) {
+            $this->ensureRecurringSpawns($dateObj->toDateString());
+        }
+
         if ($isToday) {
             $tasks = ChecklistTask::with(['assignedUsers', 'referenceFiles'])
                 ->where('is_active', true)
@@ -579,6 +703,7 @@ class ChecklistController extends Controller
     public function manage()
     {
         $allTasks = ChecklistTask::with(['assignedUsers', 'referenceFiles'])
+            ->whereNull('parent_task_id') // Hide spawned tasks, only show templates & regular tasks
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -776,6 +901,9 @@ class ChecklistController extends Controller
             }
         }
 
+        // If this is a spawned recurring task, try to spawn the next one
+        $this->trySpawnNextRecurring($task, $today);
+
         if ($request->ajax() || $request->wantsJson()) {
             return response()->json(['success' => true, 'message' => "'{$task->title}' submitted!"]);
         }
@@ -931,7 +1059,9 @@ class ChecklistController extends Controller
             'ai_prompt'         => 'nullable|string|max:2000',
             'approval_prompt'   => 'nullable|string|max:2000',
             'task_time'         => 'nullable|date_format:H:i',
-            'frequency'         => 'nullable|in:daily,once,weekly,monthly,custom',
+            'frequency'         => 'nullable|in:daily,once,weekly,monthly,custom,recurring_on_complete',
+            'respawn_delay_minutes' => 'nullable|integer|min:0|max:1440',
+            'max_daily_count'   => 'nullable|integer|min:1|max:100',
             'submission_mode'   => 'nullable|in:group,individual',
             'schedule_days'     => 'nullable|array',
             'schedule_days.*'   => 'integer|min:0|max:31',
@@ -965,14 +1095,21 @@ class ChecklistController extends Controller
 
         $task = ChecklistTask::create([
             ...$validated,
-            'reference_image'  => $imagePath,
-            'frequency'        => $validated['frequency'] ?? 'daily',
-            'submission_mode'  => $validated['submission_mode'] ?? 'group',
-            'schedule_days'    => $validated['schedule_days'] ?? null,
-            'schedule_dates'   => $validated['schedule_dates'] ?? null,
-            'sort_order'       => (ChecklistTask::max('sort_order') ?? 0) + 1,
-            'is_active'        => true,
+            'reference_image'       => $imagePath,
+            'frequency'             => $validated['frequency'] ?? 'daily',
+            'submission_mode'       => $validated['submission_mode'] ?? 'group',
+            'schedule_days'         => $validated['schedule_days'] ?? null,
+            'schedule_dates'        => $validated['schedule_dates'] ?? null,
+            'respawn_delay_minutes' => $validated['respawn_delay_minutes'] ?? null,
+            'max_daily_count'       => $validated['max_daily_count'] ?? null,
+            'sort_order'            => (ChecklistTask::max('sort_order') ?? 0) + 1,
+            'is_active'             => true,
         ]);
+
+        // If recurring_on_complete, create the first spawn for today
+        if (($validated['frequency'] ?? 'daily') === 'recurring_on_complete') {
+            $this->createSpawnedTask($task, 1, now()->toDateString());
+        }
 
         if ($request->hasFile('reference_files')) {
             foreach ($request->file('reference_files') as $i => $file) {
@@ -1008,7 +1145,9 @@ class ChecklistController extends Controller
             'ai_prompt'         => 'nullable|string|max:2000',
             'approval_prompt'   => 'nullable|string|max:2000',
             'task_time'         => 'nullable|date_format:H:i',
-            'frequency'         => 'nullable|in:daily,once,weekly,monthly,custom',
+            'frequency'         => 'nullable|in:daily,once,weekly,monthly,custom,recurring_on_complete',
+            'respawn_delay_minutes' => 'nullable|integer|min:0|max:1440',
+            'max_daily_count'   => 'nullable|integer|min:1|max:100',
             'submission_mode'   => 'nullable|in:group,individual',
             'schedule_days'     => 'nullable|array',
             'schedule_days.*'   => 'integer|min:0|max:31',
@@ -1081,6 +1220,11 @@ class ChecklistController extends Controller
 
     public function destroyTask(ChecklistTask $task)
     {
+        // If this is a recurring template, also soft-delete all spawned children
+        if ($task->isRecurringTemplate()) {
+            ChecklistTask::where('parent_task_id', $task->id)->delete();
+        }
+
         $task->delete();
         return back()->with('success', 'Task deleted.');
     }
