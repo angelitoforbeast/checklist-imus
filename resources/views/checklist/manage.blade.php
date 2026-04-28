@@ -266,6 +266,7 @@
                 <option value="weekly">📅 Weekly</option>
                 <option value="monthly">🗓️ Monthly</option>
                 <option value="custom">📌 Custom Dates</option>
+                <option value="recurring_on_complete">🔁 Recurring on Complete</option>
               </select>
             </div>
             <div>
@@ -325,8 +326,27 @@
             <p class="text-[10px] text-gray-400 mt-1" x-show="dates.length === 0">No dates selected</p>
           </div>
 
+          {{-- Recurring on Complete: delay + max count --}}
+          <div x-show="freq === 'recurring_on_complete'" x-transition class="bg-gray-50 rounded-xl p-3 space-y-2">
+            <p class="text-xs text-gray-500">⏱️ When this task is completed, a new instance will auto-spawn after the delay below.</p>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs font-medium text-gray-600 mb-1 block">Respawn Delay <span class="text-gray-400 font-normal">(minutes)</span></label>
+                <input type="number" name="respawn_delay_minutes" min="0" max="1440" value="{{ old('respawn_delay_minutes', 5) }}"
+                       class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+                <p class="text-[10px] text-gray-400 mt-1">0 = spawn immediately. Default: 5</p>
+              </div>
+              <div>
+                <label class="text-xs font-medium text-gray-600 mb-1 block">Max per Day</label>
+                <input type="number" name="max_daily_count" min="1" max="100" value="{{ old('max_daily_count', 10) }}"
+                       class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+                <p class="text-[10px] text-gray-400 mt-1">Hard cap on daily spawns. Default: 10</p>
+              </div>
+            </div>
+          </div>
+
           {{-- Start / End date --}}
-          <div class="grid grid-cols-2 gap-3" x-show="freq !== 'once' && freq !== 'custom'" x-transition>
+          <div class="grid grid-cols-2 gap-3" x-show="freq !== 'once' && freq !== 'custom' && freq !== 'recurring_on_complete'" x-transition>
             <div>
               <label class="text-xs font-medium text-gray-600 mb-1 block">Start Date <span class="text-gray-400 font-normal">(opt.)</span></label>
               <input type="date" name="start_date" value="{{ old('start_date') }}"
@@ -574,6 +594,7 @@
                       'weekly' => ['bg-violet-100 text-violet-700', '📅 Weekly'],
                       'monthly' => ['bg-teal-100 text-teal-700', '🗓️ Monthly'],
                       'custom' => ['bg-rose-100 text-rose-700', '📌 Custom'],
+                      'recurring_on_complete' => ['bg-purple-100 text-purple-700', '🔁 On Complete'],
                       default => ['bg-cyan-100 text-cyan-700', '🔄 Daily'],
                     };
                   @endphp
@@ -671,6 +692,12 @@
                 <div class="flex items-start gap-2">
                   <span class="text-xs text-gray-400 w-24 flex-shrink-0">Dates</span>
                   <span class="text-xs text-gray-700">{{ collect($t->schedule_dates)->implode(', ') }}</span>
+                </div>
+              @endif
+              @if(($t->frequency ?? 'daily') === 'recurring_on_complete')
+                <div class="flex items-start gap-2">
+                  <span class="text-xs text-gray-400 w-24 flex-shrink-0">Respawn</span>
+                  <span class="text-xs text-gray-700">Every {{ $t->respawn_delay_minutes ?? 5 }}min, up to {{ $t->max_daily_count ?? 10 }}/day</span>
                 </div>
               @endif
               @if($t->start_date || $t->end_date)
@@ -836,6 +863,7 @@
                     <option value="weekly">📅 Weekly</option>
                     <option value="monthly">🗓️ Monthly</option>
                     <option value="custom">📌 Custom</option>
+                    <option value="recurring_on_complete">🔁 Recurring on Complete</option>
                   </select>
                 </div>
                 <div>
@@ -894,8 +922,27 @@
                 </div>
               </div>
 
+              {{-- Recurring on Complete: delay + max count --}}
+              <div x-show="editFreq === 'recurring_on_complete'" x-transition class="bg-gray-50 rounded-xl p-3 space-y-2">
+                <p class="text-xs text-gray-500">⏱️ When this task is completed, a new instance will auto-spawn after the delay below.</p>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="text-xs font-medium text-gray-600 mb-1 block">Respawn Delay <span class="text-gray-400 font-normal">(minutes)</span></label>
+                    <input type="number" name="respawn_delay_minutes" min="0" max="1440" value="{{ $t->respawn_delay_minutes ?? 5 }}"
+                           class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+                    <p class="text-[10px] text-gray-400 mt-1">0 = spawn immediately. Default: 5</p>
+                  </div>
+                  <div>
+                    <label class="text-xs font-medium text-gray-600 mb-1 block">Max per Day</label>
+                    <input type="number" name="max_daily_count" min="1" max="100" value="{{ $t->max_daily_count ?? 10 }}"
+                           class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+                    <p class="text-[10px] text-gray-400 mt-1">Hard cap on daily spawns. Default: 10</p>
+                  </div>
+                </div>
+              </div>
+
               {{-- Start / End date --}}
-              <div class="grid grid-cols-2 gap-3" x-show="editFreq !== 'once' && editFreq !== 'custom'" x-transition>
+              <div class="grid grid-cols-2 gap-3" x-show="editFreq !== 'once' && editFreq !== 'custom' && editFreq !== 'recurring_on_complete'" x-transition>
                 <div>
                   <label class="text-xs font-medium text-gray-600 mb-1 block">Start Date</label>
                   <input type="date" name="start_date" value="{{ $t->start_date }}"

@@ -150,10 +150,12 @@ class ChecklistController extends Controller
 
             if (!$latestSubmission) continue;
 
-            // Check if enough time has passed since completion
+            // Check if enough time has passed since completion.
+            // Use abs() because Carbon 3's diffInMinutes returns signed (negative for past dates).
             $delayMinutes = $template->respawn_delay_minutes ?? 5;
             $completedAt = $latestSubmission->updated_at;
-            if (now()->diffInMinutes($completedAt) >= $delayMinutes) {
+            $elapsedMinutes = abs(now()->diffInMinutes($completedAt));
+            if ($elapsedMinutes >= $delayMinutes) {
                 $nextIndex = $todaySpawns->count() + 1;
                 $this->createSpawnedTask($template, $nextIndex, $today);
             }
@@ -198,6 +200,41 @@ class ChecklistController extends Controller
         }
 
         return $spawn;
+    }
+
+    /**
+     * Helper: when a spawned task is reverted/reset, undo any later spawns from
+     * the same template on the same day so the chain stays consistent.
+     * Returns null on success, or an error message if any later spawn already
+     * has user data (admin must revert those first).
+     */
+    private function cleanupLaterSpawns(?ChecklistTask $task, string $date): ?string
+    {
+        if (!$task || !$task->isSpawnedTask()) return null;
+
+        $laterSpawns = ChecklistTask::where('parent_task_id', $task->parent_task_id)
+            ->whereDate('created_at', $date)
+            ->where('spawn_index', '>', $task->spawn_index)
+            ->get();
+
+        if ($laterSpawns->isEmpty()) return null;
+
+        $laterIds = $laterSpawns->pluck('id');
+        $hasUserData = ChecklistSubmission::whereIn('checklist_task_id', $laterIds)
+            ->whereNotIn('status', ['pending', 'not_started'])
+            ->exists();
+
+        if ($hasUserData) {
+            return 'Cannot revert/reset: a later spawn (e.g. #'
+                . ($task->spawn_index + 1)
+                . ' onward) already has a submission. Revert those first.';
+        }
+
+        foreach ($laterSpawns as $spawn) {
+            $spawn->delete();
+        }
+
+        return null;
     }
 
     /**
@@ -901,8 +938,13 @@ class ChecklistController extends Controller
             }
         }
 
-        // If this is a spawned recurring task, try to spawn the next one
-        $this->trySpawnNextRecurring($task, $today);
+        // Only spawn next if this is a NEW completion. Re-submits of an
+        // already-completed spawn must not trigger another spawn (prevents
+        // double-click and idempotency races).
+        $wasAlreadyCompleted = $existing && $existing->status === 'completed';
+        if (!$wasAlreadyCompleted) {
+            $this->trySpawnNextRecurring($task, $today);
+        }
 
         if ($request->ajax() || $request->wantsJson()) {
             return response()->json(['success' => true, 'message' => "'{$task->title}' submitted!"]);
@@ -942,6 +984,12 @@ class ChecklistController extends Controller
             abort(403);
         }
 
+        $task = ChecklistTask::withTrashed()->find($submission->checklist_task_id);
+        $cleanupError = $this->cleanupLaterSpawns($task, $submission->date->toDateString());
+        if ($cleanupError) {
+            return back()->with('error', $cleanupError);
+        }
+
         // Log the revert BEFORE deleting files (capture current file count)
         $fileCount = $submission->files->count();
 
@@ -975,6 +1023,15 @@ class ChecklistController extends Controller
     {
         if (!Auth::user()?->isAdmin()) {
             abort(403);
+        }
+
+        $task = ChecklistTask::withTrashed()->find($submission->checklist_task_id);
+        $cleanupError = $this->cleanupLaterSpawns($task, $submission->date->toDateString());
+        if ($cleanupError) {
+            if (request()->ajax()) {
+                return response()->json(['success' => false, 'error' => $cleanupError], 422);
+            }
+            return back()->with('error', $cleanupError);
         }
 
         // Delete all uploaded files from storage and database
@@ -1106,11 +1163,6 @@ class ChecklistController extends Controller
             'is_active'             => true,
         ]);
 
-        // If recurring_on_complete, create the first spawn for today
-        if (($validated['frequency'] ?? 'daily') === 'recurring_on_complete') {
-            $this->createSpawnedTask($task, 1, now()->toDateString());
-        }
-
         if ($request->hasFile('reference_files')) {
             foreach ($request->file('reference_files') as $i => $file) {
                 $task->referenceFiles()->create([
@@ -1124,6 +1176,13 @@ class ChecklistController extends Controller
 
         $userIds = array_filter((array) $request->input('assigned_users', []));
         $task->assignedUsers()->sync($userIds);
+
+        // Create first spawn AFTER assigned users + reference files are set,
+        // so the spawn inherits the same users and files.
+        if (($validated['frequency'] ?? 'daily') === 'recurring_on_complete') {
+            $task->load('assignedUsers', 'referenceFiles');
+            $this->createSpawnedTask($task, 1, now()->toDateString());
+        }
 
         return back()->with('success', 'Task added!');
     }
