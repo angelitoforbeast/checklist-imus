@@ -28,6 +28,17 @@ class ChecklistTask extends Model
         'end_date'       => 'date',
     ];
 
+    protected static function booted(): void
+    {
+        // spawn_date is a MySQL GENERATED column (DATE(created_at)). It must never
+        // be included in INSERT/UPDATE — the DB rejects the statement if it is.
+        // replicate(), mass-assignment, or any other path that copies attributes
+        // would otherwise re-emit it and fail with SQLSTATE[HY000] 3105.
+        static::saving(function (ChecklistTask $model) {
+            unset($model->spawn_date);
+        });
+    }
+
     public function submissions(): HasMany
     {
         return $this->hasMany(ChecklistSubmission::class);

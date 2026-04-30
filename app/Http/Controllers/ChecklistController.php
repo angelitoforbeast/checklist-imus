@@ -1277,6 +1277,33 @@ class ChecklistController extends Controller
     // DESTROY TASK
     // =========================================================================
 
+    public function toggleActive(ChecklistTask $task)
+    {
+        $task->is_active = !$task->is_active;
+        $task->save();
+
+        $msg = $task->is_active
+            ? "'{$task->title}' enabled."
+            : "'{$task->title}' disabled — won't appear sa daily view.";
+        return back()->with('success', $msg);
+    }
+
+    public function bulkToggleActive(Request $request)
+    {
+        $validated = $request->validate([
+            'task_ids'   => 'required|array|min:1',
+            'task_ids.*' => 'integer|exists:checklist_tasks,id',
+            'action'     => 'required|in:enable,disable',
+        ]);
+
+        $isActive = $validated['action'] === 'enable';
+        $count = ChecklistTask::whereIn('id', $validated['task_ids'])
+            ->update(['is_active' => $isActive]);
+
+        $verb = $isActive ? 'enabled' : 'disabled';
+        return back()->with('success', "{$count} task(s) {$verb}.");
+    }
+
     public function destroyTask(ChecklistTask $task)
     {
         // If this is a recurring template, also soft-delete all spawned children
@@ -1294,10 +1321,20 @@ class ChecklistController extends Controller
 
     public function duplicateTask(ChecklistTask $task)
     {
-        $newTask = $task->replicate();
+        $newTask = $task->replicate(['spawn_date']);
         $newTask->title = 'Copy of ' . $task->title;
         $newTask->sort_order = (ChecklistTask::max('sort_order') ?? 0) + 1;
         $newTask->is_active = true;
+
+        // A duplicated spawn becomes a regular one-off task, not another child
+        // of the original recurring template — otherwise it would conflict with
+        // the unique(parent, spawn_date, spawn_index) index for today.
+        if ($task->isSpawnedTask()) {
+            $newTask->parent_task_id = null;
+            $newTask->spawn_index = null;
+            $newTask->frequency = 'once';
+        }
+
         $newTask->save();
 
         // Copy assigned users

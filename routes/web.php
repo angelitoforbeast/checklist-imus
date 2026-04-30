@@ -49,9 +49,11 @@ Route::middleware(['web','auth'])->prefix('checklist')->name('checklist.')->grou
         Route::patch('/tasks/{task}', [ChecklistController::class, 'updateTask'])->name('update-task');
         Route::delete('/tasks/{task}', [ChecklistController::class, 'destroyTask'])->name('destroy-task');
         Route::post('/tasks/{task}/duplicate', [ChecklistController::class, 'duplicateTask'])->name('duplicate-task');
+        Route::post('/tasks/{task}/toggle-active', [ChecklistController::class, 'toggleActive'])->name('toggle-active');
         Route::post('/tasks/reorder', [ChecklistController::class, 'reorderTasks'])->name('reorder');
         Route::post('/tasks/bulk-assign', [ChecklistController::class, 'bulkAssign'])->name('bulk-assign');
         Route::post('/tasks/bulk-delete', [ChecklistController::class, 'bulkDelete'])->name('bulk-delete');
+        Route::post('/tasks/bulk-toggle-active', [ChecklistController::class, 'bulkToggleActive'])->name('bulk-toggle-active');
         Route::post('/submission/{submission}/revert', [ChecklistController::class, 'revertSubmission'])->name('revert-submission');
         Route::post('/submission/{submission}/reset', [ChecklistController::class, 'resetSubmission'])->name('reset-submission');
     Route::post('/task/{task}/send-comment', [ChecklistController::class, 'sendComment'])->name('send-comment');
