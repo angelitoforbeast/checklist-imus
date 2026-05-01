@@ -741,6 +741,7 @@ class ChecklistController extends Controller
     {
         $allTasks = ChecklistTask::with(['assignedUsers', 'referenceFiles'])
             ->whereNull('parent_task_id') // Hide spawned tasks, only show templates & regular tasks
+            ->orderByDesc('is_active') // active tasks first, disabled at the bottom
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -1269,6 +1270,19 @@ class ChecklistController extends Controller
 
         $userIds = array_filter((array) $request->input('assigned_users', []));
         $task->assignedUsers()->sync($userIds);
+
+        // For recurring templates, propagate user-assignment changes to today's
+        // existing spawns. Without this, users newly added to the template
+        // wouldn't see the active spawn until the next day's spawn is created.
+        if ($task->isRecurringTemplate()) {
+            $today = now()->toDateString();
+            $todaySpawnIds = ChecklistTask::where('parent_task_id', $task->id)
+                ->whereDate('created_at', $today)
+                ->pluck('id');
+            foreach ($todaySpawnIds as $spawnId) {
+                ChecklistTask::find($spawnId)?->assignedUsers()->sync($userIds);
+            }
+        }
 
         return back()->with('success', 'Task updated!');
     }
