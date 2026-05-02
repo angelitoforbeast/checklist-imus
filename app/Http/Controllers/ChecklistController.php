@@ -1271,16 +1271,28 @@ class ChecklistController extends Controller
         $userIds = array_filter((array) $request->input('assigned_users', []));
         $task->assignedUsers()->sync($userIds);
 
-        // For recurring templates, propagate user-assignment changes to today's
-        // existing spawns. Without this, users newly added to the template
-        // wouldn't see the active spawn until the next day's spawn is created.
+        // For recurring templates, propagate edits to today's existing spawns
+        // so what the user sees stays in sync with the template. Without this,
+        // renaming or reassigning the template wouldn't update the active spawn
+        // until tomorrow's spawn is created.
         if ($task->isRecurringTemplate()) {
             $today = now()->toDateString();
-            $todaySpawnIds = ChecklistTask::where('parent_task_id', $task->id)
+            $todaySpawns = ChecklistTask::where('parent_task_id', $task->id)
                 ->whereDate('created_at', $today)
-                ->pluck('id');
-            foreach ($todaySpawnIds as $spawnId) {
-                ChecklistTask::find($spawnId)?->assignedUsers()->sync($userIds);
+                ->get();
+            foreach ($todaySpawns as $spawn) {
+                $spawn->update([
+                    'title'                        => $task->title . ' - ' . $spawn->spawn_index,
+                    'description'                  => $task->description,
+                    'instructions'                 => $task->instructions,
+                    'type'                         => $task->type,
+                    'required_photos'              => $task->required_photos,
+                    'required_photos_before_start' => $task->required_photos_before_start,
+                    'ai_prompt'                    => $task->ai_prompt,
+                    'approval_prompt'              => $task->approval_prompt,
+                    'submission_mode'              => $task->submission_mode,
+                ]);
+                $spawn->assignedUsers()->sync($userIds);
             }
         }
 
